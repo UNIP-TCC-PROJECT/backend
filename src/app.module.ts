@@ -6,16 +6,15 @@ import { UsersModule } from './users/users.module';
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: '1234',
-      database: 'tcc_db',
+      host: process.env.DB_HOST ?? 'db',
+      port: parseInt(process.env.DB_PORT ?? '5432', 10),
+      username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
+      password: process.env.DB_PASSWORD ?? 'postgres',
+      database: process.env.DB_NAME ?? 'tcc_db',
       autoLoadEntities: true,
-      synchronize: true, 
-
+      synchronize: true,
     }),
-        UsersModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
