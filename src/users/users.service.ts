@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -12,6 +12,14 @@ export class UsersService {
   ) {}
 
   async create(data: any) {
+    const existingUser = await this.repo.findOne({ 
+      where: { email: data.email } 
+    });
+    
+    if (existingUser) {
+      throw new ConflictException('Email já cadastrado');
+    }
+
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
     const user = this.repo.create({
@@ -19,25 +27,31 @@ export class UsersService {
       password: hashedPassword,
     });
 
-    return this.repo.save(user);
+    const savedUser = await this.repo.save(user) as unknown as User;
+    
+    const { password, ...result } = savedUser;
+    return result;
   }
-
+  
   async login(email: string, password: string) {
-  const user = await this.repo.findOne({ where: { email } });
+    const users = await this.repo.find({ 
+      where: { email },
+      take: 1
+    });
+    
+    const user = users[0] as unknown as User;
 
-  if (!user) {
-    throw new Error('Usuário não encontrado');
+    if (!user) {
+      throw new HttpException('Email ou senha inválidos', HttpStatus.UNAUTHORIZED);
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      throw new HttpException('Email ou senha inválidos', HttpStatus.UNAUTHORIZED);
+    }
+
+    const { password: _, ...result } = user;
+    return result;
   }
-
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-
-  if (!isPasswordValid) {
-    throw new Error('Senha inválida');
-  }
-
-  return {
-    id: user.id,
-    type: user.type,
-  };
-}
 }

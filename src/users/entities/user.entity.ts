@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
 export enum UserType {
   ONG = 'ONG',
@@ -24,4 +24,19 @@ export class User {
     enum: UserType,
   })
   type!: UserType;
+
+  @Column({ nullable: true })
+  cpf?: string;
+
+  @Column({ nullable: true })
+  cnpj?: string;
+
+  @Column({ nullable: true })
+  phone?: string;
+
+  @Column({ nullable: true })
+  description?: string;
+
+  @CreateDateColumn()
+  createdAt!: Date;
 }
