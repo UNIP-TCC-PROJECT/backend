@@ -25,9 +25,9 @@ Este projeto roda **100% via Docker**, incluindo o banco de dados e o backend.
 
 Antes de iniciar, instale:
 
-- Docker Desktop
-- Yarn
-- Git
+- [Docker Desktop](https://www.docker.com/get-started/)
+- [Yarn](https://yarnpkg.com/getting-started/install)
+- [Git](https://git-scm.com/downloads)
 
 ---
 
