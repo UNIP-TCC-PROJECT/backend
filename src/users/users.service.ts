@@ -1,8 +1,8 @@
 import { Injectable, HttpException, HttpStatus, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { User } from './entities/user.entity';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcrypt';
+import { User, UserType } from './entities/user.entity';
 
 @Injectable()
 export class UsersService {
@@ -54,4 +54,24 @@ export class UsersService {
     const { password: _, ...result } = user;
     return result;
   }
+
+  
+async findAllOngs() {
+  const ongs = await this.repo.find({
+    where: {
+      type: UserType.ONG,
+    },
+    select: [
+      'id',
+      'name',
+      'email',
+      'cnpj',
+      'description',
+      'createdAt',
+    ],
+  });
+
+  return ongs;
+}
+
 }

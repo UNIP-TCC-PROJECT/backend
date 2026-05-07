@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Post, Body, UsePipes, ValidationPipe, Get } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
 import { LoginDto } from './dto/loginDto';
@@ -18,4 +18,10 @@ export class UsersController {
   login(@Body() loginDto: LoginDto) {
     return this.usersService.login(loginDto.email, loginDto.password);
   }
+
+  @Get('ongs')
+  findAllOngs() {
+    return this.usersService.findAllOngs();
+  }
+  
 }
