@@ -1,71 +1,79 @@
-# 🚀 UNIP TCC Project
+# UNIP TCC — Backend
 
-Sistema de doações com cadastro de ONGs e doadores.
+API REST desenvolvida em **NestJS + TypeScript** com banco **PostgreSQL**, executada **100% via Docker**. O backend é um sistema de doações que oferece cadastro de ONGs e doadores, login unificado e listagem de ONGs cadastradas.
 
----
+## Sumário
 
-# 📦 Tecnologias
+- [Sobre o projeto](#sobre-o-projeto)
+- [Tecnologias](#tecnologias)
+- [Pré-requisitos](#pré-requisitos)
+- [Como instalar e rodar](#como-instalar-e-rodar)
+- [Scripts disponíveis](#scripts-disponíveis)
+- [Perfis de configuração](#perfis-de-configuração)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Rotas da API](#rotas-da-api)
+  - [GET /](#get-)
+  - [POST /users](#post-users)
+  - [POST /users/login](#post-userslogin)
+  - [GET /users/ongs](#get-usersongs)
+- [Seed de ONGs](#seed-de-ongs)
+- [Parar o projeto](#parar-o-projeto)
+- [Solução de problemas](#solução-de-problemas)
+- [Observações](#observações)
 
-- NestJS (Backend)
-- PostgreSQL (Banco de dados)
-- Docker (Ambiente)
-- Yarn (Gerenciador de pacotes)
+## Sobre o projeto
 
----
+Back-end da aplicação UNIP TCC — um sistema de doações que conecta ONGs e doadores. Ele expõe uma **API REST** consumida pelo aplicativo mobile (front-end) e oferece:
 
-# 🧠 Visão geral
+- **Cadastro de usuários** — o mesmo endpoint atende ONGs e Doadores, diferenciados pelo campo `type`
+- **Login unificado** — autenticação única para ambos os tipos de usuário
+- **Listagem de ONGs** — retorna apenas os campos públicos das ONGs cadastradas
+- **Healthcheck** — rota simples para verificar se a API está no ar
 
-Este projeto roda **100% via Docker**, incluindo o banco de dados e o backend.
+O projeto roda **100% via Docker**, incluindo o banco de dados PostgreSQL e o próprio backend. O objetivo é garantir que qualquer pessoa consiga subir o sistema com um único comando. As senhas são criptografadas com `bcrypt` antes de serem salvas e nunca são retornadas nas respostas.
 
-👉 O objetivo é garantir que qualquer pessoa consiga rodar o sistema com apenas um comando.
+## Tecnologias
 
-O backend expõe uma **API REST** que permite:
+- [NestJS](https://nestjs.com/) — framework Node.js para construção da API
+- [TypeScript](https://www.typescriptlang.org/) — linguagem principal do projeto
+- [PostgreSQL](https://www.postgresql.org/) — banco de dados relacional
+- [Docker](https://www.docker.com/) / Docker Compose — ambiente de execução (banco + backend)
+- [TypeORM](https://typeorm.io/) — mapeamento objeto-relacional (ORM)
+- [class-validator](https://github.com/typestack/class-validator) — validação dos dados de entrada (DTOs)
+- [bcrypt](https://www.npmjs.com/package/bcrypt) — criptografia de senhas
+- [Jest](https://jestjs.io/) — testes unitários e end-to-end
+- [Yarn](https://yarnpkg.com/) — gerenciador de pacotes
 
-- Cadastrar usuários (ONGs e Doadores)
-- Fazer login unificado
-- Listar as ONGs cadastradas
+## Pré-requisitos
 
----
+Antes de começar, você precisa ter instalado na sua máquina:
 
-# ⚙️ Pré-requisitos
+- **[Docker Desktop](https://www.docker.com/get-started/)** — para subir o banco e o backend em containers
+- **[Yarn](https://yarnpkg.com/getting-started/install)** — gerenciador de pacotes usado neste projeto
+- **[Node.js](https://nodejs.org/)** — necessário para instalar as dependências localmente e rodar o seed
+- **[Git](https://git-scm.com/downloads)** — para clonar o repositório
 
-Antes de iniciar, instale:
+> **Importante:** não é necessário instalar o PostgreSQL localmente — o banco roda inteiramente via Docker.
 
-- [Docker Desktop](https://www.docker.com/get-started/)
-- [Yarn](https://yarnpkg.com/getting-started/install)
-- [Git](https://git-scm.com/downloads)
-- [Node.js](https://nodejs.org/)
+## Como instalar e rodar
 
----
+1. Clone o repositório e entre na pasta do backend:
+   ```bash
+   git clone <URL_DO_REPO>
+   cd UNIP-TCC/backend
+   ```
 
-# 🚀 Como rodar o projeto (PASSO A PASSO)
+2. Instale as dependências localmente (necessário para o editor reconhecer os tipos e para rodar o seed):
+   ```bash
+   yarn
+   ```
 
-## 1. Clonar o repositório
+3. Suba o sistema completo (banco + backend) via Docker:
+   ```bash
+   yarn dev
+   ```
 
-```bash
-git clone <URL_DO_REPO>
-cd UNIP-TCC/backend
-```
-
----
-
-## 2. Instalar dependências
-
-```bash
-yarn
-```
-
-> Instala as dependências localmente (necessário para o editor reconhecer os tipos e para rodar o seed).
-
----
-
-## 3. Subir o sistema
-
-```bash
-yarn dev
-```
-
-👉 Esse comando faz tudo automaticamente:
+Esse comando faz tudo automaticamente:
 
 - Sobe o PostgreSQL via Docker
 - Sobe o backend NestJS
@@ -73,127 +81,74 @@ yarn dev
 
 > Internamente o `yarn dev` executa `docker compose up --build`, recriando os containers a cada inicialização.
 
----
+Após subir o projeto, os serviços ficam disponíveis em:
 
-## 🧩 Scripts úteis
+- **Backend (API):** http://localhost:3000
+- **Banco de dados:** localhost:5432
+
+## Scripts disponíveis
 
 Além do `yarn dev`, o `package.json` disponibiliza outros comandos:
 
-| Comando             | O que faz                                              |
-| ------------------- | ------------------------------------------------------ |
-| `yarn dev`          | Sobe tudo via Docker (banco + backend)                 |
-| `yarn docker:up`    | Sobe os containers em segundo plano (`-d`)             |
-| `yarn docker:down`  | Para e remove os containers                            |
-| `yarn start:dev`    | Roda o backend localmente em modo watch (sem Docker)   |
-| `yarn build`        | Compila o projeto para a pasta `dist`                  |
-| `yarn lint`         | Roda o ESLint e corrige problemas automaticamente      |
-| `yarn format`       | Formata o código com o Prettier                        |
-| `yarn test`         | Executa os testes unitários (Jest)                     |
-| `yarn test:e2e`     | Executa os testes end-to-end                           |
+| Comando | Descrição |
+|---|---|
+| `yarn dev` | Sobe tudo via Docker (banco + backend) |
+| `yarn docker:up` | Sobe os containers em segundo plano (`-d`) |
+| `yarn docker:down` | Para e remove os containers |
+| `yarn start:dev` | Roda o backend localmente em modo watch (sem Docker) |
+| `yarn build` | Compila o projeto para a pasta `dist` |
+| `yarn lint` | Roda o ESLint e corrige problemas automaticamente |
+| `yarn format` | Formata o código com o Prettier |
+| `yarn test` | Executa os testes unitários (Jest) |
+| `yarn test:e2e` | Executa os testes end-to-end |
 
----
+## Perfis de configuração
 
-# 🐳 O que acontece ao rodar `yarn dev`
+O backend é configurado por **variáveis de ambiente** e por **Docker Compose**. Para desenvolvimento local, o `yarn dev` já sobe o banco e o backend com as configurações padrão, sem necessidade de ajustes manuais.
 
-- Docker Compose inicia os containers
-- Banco de dados PostgreSQL sobe
-- Backend NestJS inicia dentro do Docker
-- Aplicação fica disponível
+| Variável | Obrigatória | Descrição |
+|---|:---:|---|
+| `DATABASE_HOST` | ✅ | Host do banco PostgreSQL (ex.: `db` dentro do Docker, `localhost` fora) |
+| `DATABASE_PORT` | ✅ | Porta do banco (padrão: `5432`) |
+| `DATABASE_USER` | ✅ | Usuário do banco |
+| `DATABASE_PASSWORD` | ✅ | Senha do banco |
+| `DATABASE_NAME` | ✅ | Nome do banco de dados |
+| `PORT` | ❌ | Porta em que a API é exposta (padrão: `3000`) |
 
----
+> Ao rodar o backend **fora do Docker** (via `yarn start:dev`), aponte `DATABASE_HOST` para `localhost`. Dentro do Docker, use o nome do serviço do banco definido no `docker-compose`.
 
-# 🌱 Seed de ONGs
+## Estrutura do projeto
 
-O projeto possui um arquivo chamado:
-
-```bash
-seed-ongs.ts
+```
+backend/
+├── src/
+│   ├── users/          # Módulo de usuários (controller, service, entity, DTOs)
+│   ├── app.module.ts   # Módulo raiz da aplicação
+│   ├── app.controller.ts  # Controller do healthcheck (GET /)
+│   └── main.ts         # Ponto de entrada da aplicação NestJS
+├── test/               # Testes end-to-end (e2e)
+├── seed-ongs.ts        # Script de seed para popular ONGs iniciais
+├── docker-compose.yml  # Orquestração dos containers (banco + backend)
+├── Dockerfile          # Imagem do backend
+└── package.json        # Dependências e scripts
 ```
 
-Esse arquivo é responsável por cadastrar ONGs iniciais no banco de dados para testes.
-
----
-
-## 📥 Instalar ts-node
-
-Caso não tenha o `ts-node` instalado globalmente, execute:
-
-```bash
-yarn global add ts-node typescript
-```
-
-ou:
-
-```bash
-npm install -g ts-node typescript
-```
-
----
-
-## ▶️ Executar o seed
-
-Com o projeto rodando, execute:
-
-```bash
-yarn ts-node seed-ongs.ts
-```
-
-👉 Esse comando irá:
-
-- Conectar no PostgreSQL
-- Inserir ONGs de exemplo
-- Evitar duplicação caso já existam
-
----
-
-## ✅ Resultado esperado
-
-Após executar o seed, você verá algo parecido com:
-
-```bash
-ONG ONG Esperança cadastrada.
-ONG ONG Vida Nova cadastrada.
-Seed finalizado.
-```
-
----
-
-# 🌐 Acesso
-
-Após subir o projeto:
-
-- Backend: http://localhost:3000
-- Banco: localhost:5432
-
----
-
-# 🧪 Estrutura do sistema
-
-- Cadastro de ONGs
-- Cadastro de Doadores
-- Login unificado
-- API REST
-
----
-
-# 📡 Rotas da API
+## Rotas da API
 
 Base URL: `http://localhost:3000`
 
 Todas as rotas trocam dados no formato **JSON** (`Content-Type: application/json`).
 
-## Resumo
+### Resumo
 
-| Método | Rota           | Para que serve                                 | Corpo (body)     |
-| ------ | -------------- | ---------------------------------------------- | ---------------- |
-| `GET`  | `/`            | Healthcheck — verifica se a API está no ar     | —                |
-| `POST` | `/users`       | Cadastra um usuário (ONG ou Doador)            | `CreateUserDto`  |
-| `POST` | `/users/login` | Realiza o login unificado (ONG ou Doador)      | `LoginDto`       |
-| `GET`  | `/users/ongs`  | Lista todas as ONGs cadastradas                | —                |
+| Método | Rota | Para que serve | Corpo (body) |
+|---|---|---|---|
+| `GET` | `/` | Healthcheck — verifica se a API está no ar | — |
+| `POST` | `/users` | Cadastra um usuário (ONG ou Doador) | `CreateUserDto` |
+| `POST` | `/users/login` | Realiza o login unificado (ONG ou Doador) | `LoginDto` |
+| `GET` | `/users/ongs` | Lista todas as ONGs cadastradas | — |
 
----
-
-## `GET /`
+### GET /
 
 Rota de healthcheck. Retorna uma string simples confirmando que o backend está rodando.
 
@@ -203,9 +158,7 @@ Rota de healthcheck. Retorna uma string simples confirmando que o backend está 
 Hello World!
 ```
 
----
-
-## `POST /users`
+### POST /users
 
 Cadastra um novo usuário no sistema. O mesmo endpoint serve para **ONG** e **Doador** — o que muda é o campo `type` e os campos específicos de cada tipo.
 
@@ -213,16 +166,16 @@ A senha é criptografada com `bcrypt` antes de ser salva e **nunca** é retornad
 
 **Corpo da requisição — `CreateUserDto`:**
 
-| Campo         | Tipo                  | Obrigatório | Regras / Observações                       |
-| ------------- | --------------------- | ----------- | ------------------------------------------ |
-| `name`        | `string`              | ✅ Sim      | Mínimo de 3 caracteres                     |
-| `email`       | `string`              | ✅ Sim      | Formato de email válido e único            |
-| `password`    | `string`              | ✅ Sim      | Mínimo de 6 caracteres                     |
-| `type`        | `"ONG"` \| `"DOADOR"` | ✅ Sim      | Define o tipo do usuário                   |
-| `cnpj`        | `string`              | ❌ Não      | Usado para ONGs                            |
-| `description` | `string`              | ❌ Não      | Descrição da ONG                           |
-| `cpf`         | `string`              | ❌ Não      | Usado para Doadores                        |
-| `phone`       | `string`              | ❌ Não      | Telefone do Doador                         |
+| Campo | Tipo | Obrigatório | Regras / Observações |
+|---|---|---|---|
+| `name` | `string` | ✅ Sim | Mínimo de 3 caracteres |
+| `email` | `string` | ✅ Sim | Formato de email válido e único |
+| `password` | `string` | ✅ Sim | Mínimo de 6 caracteres |
+| `type` | `"ONG"` \| `"DOADOR"` | ✅ Sim | Define o tipo do usuário |
+| `cnpj` | `string` | ❌ Não | Usado para ONGs |
+| `description` | `string` | ❌ Não | Descrição da ONG |
+| `cpf` | `string` | ❌ Não | Usado para Doadores |
+| `phone` | `string` | ❌ Não | Telefone do Doador |
 
 **Exemplo — cadastro de ONG:**
 
@@ -269,18 +222,16 @@ A senha é criptografada com `bcrypt` antes de ser salva e **nunca** é retornad
 - `400 Bad Request` — campos inválidos (validação do `class-validator`)
 - `409 Conflict` — `Email já cadastrado`
 
----
-
-## `POST /users/login`
+### POST /users/login
 
 Realiza o login unificado. Funciona tanto para ONGs quanto para Doadores.
 
 **Corpo da requisição — `LoginDto`:**
 
-| Campo      | Tipo     | Obrigatório | Regras                  |
-| ---------- | -------- | ----------- | ----------------------- |
-| `email`    | `string` | ✅ Sim      | Formato de email válido |
-| `password` | `string` | ✅ Sim      | Senha do usuário        |
+| Campo | Tipo | Obrigatório | Regras |
+|---|---|---|---|
+| `email` | `string` | ✅ Sim | Formato de email válido |
+| `password` | `string` | ✅ Sim | Senha do usuário |
 
 **Exemplo:**
 
@@ -298,9 +249,7 @@ Realiza o login unificado. Funciona tanto para ONGs quanto para Doadores.
 - `400 Bad Request` — campos inválidos
 - `401 Unauthorized` — `Email ou senha inválidos`
 
----
-
-## `GET /users/ongs`
+### GET /users/ongs
 
 Lista todas as ONGs cadastradas (usuários com `type = "ONG"`). Retorna apenas campos públicos — senha e dados sensíveis não são expostos.
 
@@ -319,45 +268,62 @@ Lista todas as ONGs cadastradas (usuários com `type = "ONG"`). Retorna apenas c
 ]
 ```
 
----
+## Seed de ONGs
 
-# ⚠️ Observações importantes
+O projeto possui o arquivo `seed-ongs.ts`, responsável por cadastrar ONGs iniciais no banco de dados para testes.
 
-- NÃO é necessário instalar PostgreSQL localmente
-- Tudo roda via Docker
-- Não use `npm install` no backend
-- Sempre use `yarn dev` para iniciar o projeto
+1. Caso não tenha o `ts-node` instalado globalmente, execute:
+   ```bash
+   yarn global add ts-node typescript
+   ```
+   ou:
+   ```bash
+   npm install -g ts-node typescript
+   ```
 
----
+2. Com o projeto rodando, execute o seed:
+   ```bash
+   yarn ts-node seed-ongs.ts
+   ```
 
-# 🛑 Parar o projeto
+Esse comando irá:
+
+- Conectar no PostgreSQL
+- Inserir ONGs de exemplo
+- Evitar duplicação caso já existam
+
+**Resultado esperado:**
+
+```bash
+ONG ONG Esperança cadastrada.
+ONG ONG Vida Nova cadastrada.
+Seed finalizado.
+```
+
+## Parar o projeto
+
+Para parar e remover os containers:
 
 ```bash
 docker compose down
 ```
 
----
+## Solução de problemas
 
-# 🔧 Solução de problemas
-
-## Docker não inicia
+**Docker não inicia**
 
 Verifique se o Docker Desktop está aberto.
 
----
+**Erro de conexão com banco**
 
-## Erro de conexão com banco
-
-Execute:
+Recrie os containers:
 
 ```bash
 docker compose down
 docker compose up --build
 ```
 
----
-
-## Seed não funciona
+**Seed não funciona**
 
 Verifique se:
 
@@ -365,8 +331,10 @@ Verifique se:
 - O banco Docker foi iniciado
 - As dependências foram instaladas com `yarn`
 
----
+## Observações
 
-# 👨‍💻 Desenvolvimento
-
-Para desenvolvimento, o backend roda automaticamente em modo watch dentro do container.
+- **Não** é necessário instalar PostgreSQL localmente — tudo roda via Docker.
+- **Não** use `npm install` no backend; sempre utilize `yarn`.
+- Sempre use `yarn dev` para iniciar o projeto completo.
+- Durante o desenvolvimento, o backend roda automaticamente em modo watch dentro do container, recarregando a cada alteração no código.
+- As senhas são criptografadas com `bcrypt` e nunca retornam nas respostas da API.
