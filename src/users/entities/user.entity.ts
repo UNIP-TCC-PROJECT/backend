@@ -1,4 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
 export enum UserType {
   ONG = 'ONG',
@@ -36,6 +41,24 @@ export class User {
 
   @Column({ nullable: true })
   description?: string;
+
+  @Column({ nullable: true })
+  whatsapp?: string;
+
+  @Column({ nullable: true })
+  instagram?: string;
+
+  @Column({ nullable: true })
+  website?: string;
+
+  @Column({ nullable: true })
+  pixKey?: string;
+
+  @Column({ nullable: true })
+  profileImage?: string;
+
+  @Column({ nullable: true })
+  category?: string;
 
   @CreateDateColumn()
   createdAt!: Date;
