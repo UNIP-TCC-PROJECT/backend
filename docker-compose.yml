@@ -28,6 +28,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: tcc_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-trocar-em-producao}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
 
 volumes:
   postgres_data:

@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { User, UserType } from './entities/user.entity';
+import type { JwtPayload } from '../auth/jwt-payload.interface';
 
 
 
@@ -17,6 +19,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private repo: Repository<User>,
+    private jwtService: JwtService,
   ) {}
 
   async create(data: any) {
@@ -59,8 +62,14 @@ export class UsersService {
       throw new HttpException('Email ou senha inválidos', HttpStatus.UNAUTHORIZED);
     }
 
-    const { password: _, ...result } = user;
-    return result;
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    return { access_token: accessToken };
   }
 
   
