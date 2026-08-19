@@ -68,6 +68,9 @@ async findAllOngs() {
       'cnpj',
       'description',
       'createdAt',
+      'averageRating',
+      'totalReviews',
+      
     ],
   });
 
