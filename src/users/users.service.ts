@@ -1,8 +1,16 @@
-import { Injectable, HttpException, HttpStatus, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcrypt';
 import { User, UserType } from './entities/user.entity';
+
+
 
 @Injectable()
 export class UsersService {
@@ -66,7 +74,14 @@ async findAllOngs() {
       'name',
       'email',
       'cnpj',
+      'phone',
       'description',
+      'whatsapp',
+      'instagram',
+      'website',
+      'pixKey',
+      'profileImage',
+      'category',
       'createdAt',
       'averageRating',
       'totalReviews',
@@ -75,6 +90,57 @@ async findAllOngs() {
   });
 
   return ongs;
+}
+
+async findOngById(id: number) {
+  const ong = await this.repo.findOne({
+    where: {
+      id,
+      type: UserType.ONG,
+    },
+    select: [
+      'id',
+      'name',
+      'email',
+      'cnpj',
+      'phone',
+      'description',
+      'whatsapp',
+      'instagram',
+      'website',
+      'pixKey',
+      'profileImage',
+      'category',
+      'createdAt',
+    ],
+  });
+
+  if (!ong) {
+    throw new NotFoundException('ONG não encontrada');
+  }
+
+  return ong;
+}
+
+async updateOng(id: number, data: any) {
+  const ong = await this.repo.findOne({
+    where: {
+      id,
+      type: UserType.ONG,
+    },
+  });
+
+  if (!ong) {
+    throw new NotFoundException('ONG não encontrada');
+  }
+
+  Object.assign(ong, data);
+
+  const updatedOng = await this.repo.save(ong);
+
+  const { password, ...result } = updatedOng;
+
+  return result;
 }
 
 }
