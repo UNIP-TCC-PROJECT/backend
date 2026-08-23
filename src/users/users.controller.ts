@@ -35,10 +35,10 @@ export class UsersController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
-  me(@Request() req) {
-    return req.user;
-  }
+@UseGuards(JwtAuthGuard)
+me(@Request() req: any) {
+  return this.usersService.findById(req.user.id);
+}
 
 @Get('ongs')
 findAllOngs() {

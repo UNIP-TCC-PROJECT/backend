@@ -1,3 +1,5 @@
+import { Reviews } from './reviews/entities/reviews.entity';
+import { ReviewsModule } from './reviews/reviews.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -20,11 +22,12 @@ import { MetasModule } from './metas/metas.module';
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
       database: process.env.DB_NAME ?? 'tcc_db',
-      entities: [User, Meta],
+      entities: [User, Reviews, Meta],
       synchronize: true,
     }),
 
     UsersModule,
+    ReviewsModule,
     MetasModule,
   ],
 })

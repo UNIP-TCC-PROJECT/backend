@@ -42,6 +42,12 @@ export class User {
   @Column({ nullable: true })
   description?: string;
 
+  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
+  averageRating?: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalReviews?: number;
+
   @Column({ nullable: true })
   whatsapp?: string;
 
