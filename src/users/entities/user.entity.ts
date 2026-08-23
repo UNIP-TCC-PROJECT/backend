@@ -42,13 +42,12 @@ export class User {
   @Column({ nullable: true })
   description?: string;
 
-<<<<<<< HEAD
   @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
   averageRating?: number;
 
   @Column({ type: 'int', default: 0 })
   totalReviews?: number;
-=======
+
   @Column({ nullable: true })
   whatsapp?: string;
 
@@ -66,7 +65,6 @@ export class User {
 
   @Column({ nullable: true })
   category?: string;
->>>>>>> 410d58adaa38021a9fa62723930bb179dd31a09a
 
   @CreateDateColumn()
   createdAt!: Date;
