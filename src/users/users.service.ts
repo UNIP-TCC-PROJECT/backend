@@ -70,6 +70,17 @@ export class UsersService {
     return { access_token: accessToken };
   }
 
+  async findById(id: number) {
+    const user = await this.repo.findOne({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const { password, ...result } = user;
+    return result;
+  }
+
   async findAllOngs() {
     const ongs = await this.repo.find({
       where: {
