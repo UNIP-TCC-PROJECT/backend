@@ -1,76 +1,62 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { Meta } from './entities/meta.entity';
-import { User, UserType } from '../users/entities/user.entity';
 import { CreateMetaDto } from './dto/create-meta.dto';
+import { UpdateMetaDto } from './dto/update-meta.dto';  // ← CORRIGIDO
 
 @Injectable()
 export class MetasService {
   constructor(
     @InjectRepository(Meta)
-    private metaRepo: Repository<Meta>,
-
-    @InjectRepository(User)
-    private userRepo: Repository<User>,
+    private metaRepository: Repository<Meta>,
   ) {}
 
+  async create(createMetaDto: CreateMetaDto, ongId: number) {
+    const meta = this.metaRepository.create({
+      ...createMetaDto,
+      ongId,
+    });
+    return this.metaRepository.save(meta);
+  }
+
   async findByOng(ongId: number) {
-    const ong = await this.userRepo.findOne({
-      where: {
-        id: ongId,
-        type: UserType.ONG,
-      },
-    });
-
-    if (!ong) {
-      throw new NotFoundException('ONG não encontrada');
-    }
-
-    return this.metaRepo.find({
-      where: {
-        ongId,
-        active: true,
-      },
-      order: {
-        id: 'DESC',
-      },
+    return this.metaRepository.find({
+      where: { ongId },
+      order: { id: 'DESC' },
     });
   }
 
-    async create(data: CreateMetaDto) {
-    const ong = await this.userRepo.findOne({
-      where: {
-        id: data.ongId,
-        type: UserType.ONG,
-      },
+  async findOne(id: number) {
+    const meta = await this.metaRepository.findOne({
+      where: { id },
     });
-
-    if (!ong) {
-      throw new NotFoundException('ONG não encontrada');
+    
+    if (!meta) {
+      throw new NotFoundException('Meta não encontrada');
     }
-
-    const meta = this.metaRepo.create({
-      title: data.title,
-      description: data.description,
-      type: data.type,
-      targetAmount: data.targetAmount,
-      targetQuantity: data.targetQuantity,
-      unit: data.unit,
-      deadline: data.deadline
-        ? new Date(data.deadline)
-        : undefined,
-      ongId: data.ongId,
-      currentAmount: 0,
-      currentQuantity: 0,
-      active: true,
-      details: data.details,
-      priority: data.priority,
-      image: data.image,
-    });
-
-    return this.metaRepo.save(meta);
+    
+    return meta;
   }
 
+  async update(id: number, updateMetaDto: UpdateMetaDto, ongId: number) {
+    const meta = await this.findOne(id);
+    
+    if (meta.ongId !== ongId) {
+      throw new ForbiddenException('Você não tem permissão para editar esta meta');
+    }
+    
+    Object.assign(meta, updateMetaDto);
+    return this.metaRepository.save(meta);
+  }
+
+  async remove(id: number, ongId: number) {
+    const meta = await this.findOne(id);
+    
+    if (meta.ongId !== ongId) {
+      throw new ForbiddenException('Você não tem permissão para deletar esta meta');
+    }
+    
+    return this.metaRepository.remove(meta);
+  }
 }

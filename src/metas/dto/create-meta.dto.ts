@@ -1,50 +1,38 @@
-import {
-  IsEnum,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsDateString,
-  Min,
-} from 'class-validator';
-
+import { IsString, IsNumber, IsBoolean, IsDateString, IsOptional, IsEnum, Min, MaxLength } from 'class-validator';
 import { MetaType, MetaPriority } from '../entities/meta.entity';
 
 export class CreateMetaDto {
   @IsString()
-  title!: string;
+  @MaxLength(255)
+  title!: string;  // ← Adicione o "!" aqui
 
-  @IsOptional()
-  @IsEnum(MetaPriority)
-  priority?: MetaPriority;
-
-  // Descrição curta
   @IsOptional()
   @IsString()
   description?: string;
 
-  // Descrição completa da campanha
   @IsOptional()
-  @IsString()
-  details?: string;
-
   @IsEnum(MetaType)
-  type!: MetaType;
+  type?: MetaType;
 
-  @IsOptional()
-  @IsEnum(MetaPriority)
-
-  // Metas financeiras
   @IsOptional()
   @IsNumber()
   @Min(0)
   targetAmount?: number;
 
-  // Metas materiais e voluntariado
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentAmount?: number;
+
   @IsOptional()
   @IsNumber()
   @Min(0)
   targetQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentQuantity?: number;
 
   @IsOptional()
   @IsString()
@@ -52,13 +40,21 @@ export class CreateMetaDto {
 
   @IsOptional()
   @IsDateString()
-  deadline?: string;
+  deadline?: Date;
 
-  // Futuramente podemos usar uma URL de imagem
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsEnum(MetaPriority)
+  priority?: MetaPriority;
+
+  @IsOptional()
+  @IsString()
+  details?: string;
+
   @IsOptional()
   @IsString()
   image?: string;
-
-  @IsInt()
-  ongId!: number;
-} 
+}
