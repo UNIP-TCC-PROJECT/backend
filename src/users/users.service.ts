@@ -140,6 +140,32 @@ export class UsersService {
     return ong;
   }
 
+  async updateProfile(id: number, data: any) {
+    const user = await this.repo.findOne({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    if (data.email && data.email !== user.email) {
+      const existingUser = await this.repo.findOne({
+        where: { email: data.email },
+      });
+
+      if (existingUser) {
+        throw new ConflictException('Email já cadastrado');
+      }
+    }
+
+    Object.assign(user, data);
+
+    const updatedUser = await this.repo.save(user);
+
+    const { password, ...result } = updatedUser;
+
+    return result;
+  }
+
   async updateOng(id: number, data: any) {
     const ong = await this.repo.findOne({
       where: {

@@ -16,6 +16,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
+import { UpdateProfileDto } from './dto/update-profile-dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('users')
@@ -38,6 +39,13 @@ export class UsersController {
 @UseGuards(JwtAuthGuard)
 me(@Request() req: any) {
   return this.usersService.findById(req.user.id);
+}
+
+@Patch('me')
+@UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe())
+updateMe(@Request() req: any, @Body() updateProfileDto: UpdateProfileDto) {
+  return this.usersService.updateProfile(req.user.id, updateProfileDto);
 }
 
 @Get('ongs')
