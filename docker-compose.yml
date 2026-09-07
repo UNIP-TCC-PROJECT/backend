@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   db:
     image: postgres:15
@@ -9,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: tcc_db
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -19,7 +17,7 @@ services:
       dockerfile: Dockerfile
     container_name: nest-api
     ports:
-      - '3000:3000'
+      - "3000:3000"
     depends_on:
       - db
     environment:
@@ -30,6 +28,11 @@ services:
       DB_NAME: tcc_db
       JWT_SECRET: ${JWT_SECRET:-dev-secret-trocar-em-producao}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    volumes:
+      - .:/app
+      - /app/node_modules
 
 volumes:
   postgres_data:

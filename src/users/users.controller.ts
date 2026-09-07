@@ -18,6 +18,8 @@ import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
+import { OngGuard } from '../auth/ong.guard';
 
 @Controller('users')
 export class UsersController {
@@ -35,10 +37,18 @@ export class UsersController {
     return this.usersService.login(loginDto.email, loginDto.password);
   }
 
-  @Get('me')
-@UseGuards(JwtAuthGuard)
-me(@Request() req: any) {
-  return this.usersService.findById(req.user.id);
+    @Get('me')
+  @UseGuards(JwtAuthGuard)
+  me(@Request() req: any) {
+    return this.usersService.findById(req.user.id);
+  }
+
+  @Get('admin-test')
+@UseGuards(JwtAuthGuard, AdminGuard)
+adminTest() {
+  return {
+    message: 'Acesso administrativo autorizado',
+  };
 }
 
 @Patch('me')
@@ -59,12 +69,21 @@ findOngById(@Param('id', ParseIntPipe) id: number) {
 }
 
 @Patch('ongs/:id')
+@UseGuards(JwtAuthGuard, OngGuard)
 @UsePipes(new ValidationPipe())
 updateOng(
+  @Request() req: any,
   @Param('id', ParseIntPipe) id: number,
   @Body() updateOngDto: UpdateOngDto,
 ) {
-  return this.usersService.updateOng(id, updateOngDto);
+  return this.usersService.updateOng(
+    id,
+    updateOngDto,
+    req.user.id,
+  );
 }
+
+
+
   
 }

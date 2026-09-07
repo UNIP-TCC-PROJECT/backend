@@ -1,10 +1,21 @@
-import { IsEmail, IsString, MinLength, IsEnum, IsOptional } from 'class-validator';
-import { UserType } from '../entities/user.entity';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsEnum,
+  IsOptional,
+} from 'class-validator';
+
+export enum RegisterUserType {
+  ONG = 'ONG',
+  DOADOR = 'DOADOR',
+}
 
 export class CreateUserDto {
   @IsString()
   @MinLength(3)
-  name!: string; 
+  name!: string;
+
   @IsEmail()
   email!: string;
 
@@ -12,8 +23,8 @@ export class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @IsEnum(UserType)
-  type!: UserType;
+  @IsEnum(RegisterUserType)
+  type!: RegisterUserType;
 
   // Campos para ONG
   @IsOptional()
@@ -23,7 +34,7 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   description?: string;
-  
+
   // Campos para Doador
   @IsOptional()
   @IsString()
@@ -33,4 +44,3 @@ export class CreateUserDto {
   @IsString()
   phone?: string;
 }
-
