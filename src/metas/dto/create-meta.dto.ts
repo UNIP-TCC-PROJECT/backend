@@ -1,6 +1,5 @@
 import {
   IsEnum,
-  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -31,9 +30,6 @@ export class CreateMetaDto {
   @IsEnum(MetaType)
   type!: MetaType;
 
-  @IsOptional()
-  @IsEnum(MetaPriority)
-
   // Metas financeiras
   @IsOptional()
   @IsNumber()
@@ -58,7 +54,4 @@ export class CreateMetaDto {
   @IsOptional()
   @IsString()
   image?: string;
-
-  @IsInt()
-  ongId!: number;
-} 
+}

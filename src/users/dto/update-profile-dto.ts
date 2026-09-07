@@ -21,10 +21,6 @@ export class UpdateProfileDto {
   // Campos para ONG
   @IsOptional()
   @IsString()
-  cnpj?: string;
-
-  @IsOptional()
-  @IsString()
   description?: string;
 
   @IsOptional()

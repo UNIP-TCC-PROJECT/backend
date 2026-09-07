@@ -39,10 +39,10 @@ export class MetasService {
     });
   }
 
-    async create(data: CreateMetaDto) {
+  async create(ongId: number, data: CreateMetaDto) {
     const ong = await this.userRepo.findOne({
       where: {
-        id: data.ongId,
+        id: ongId,
         type: UserType.ONG,
       },
     });
@@ -61,7 +61,7 @@ export class MetasService {
       deadline: data.deadline
         ? new Date(data.deadline)
         : undefined,
-      ongId: data.ongId,
+      ongId: ongId,
       currentAmount: 0,
       currentQuantity: 0,
       active: true,
