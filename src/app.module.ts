@@ -12,6 +12,8 @@ import { MetasModule } from './metas/metas.module';
 import { CnpjVerificationService } from './cnpj-verification/cnpj-verification.service';
 import { CnpjVerificationController } from './cnpj-verification/cnpj-verification.controller';
 import { Medalha } from './medalhas/entities/medalha.entity';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -36,8 +38,8 @@ import { Medalha } from './medalhas/entities/medalha.entity';
     MedalhasModule,
   ],
 
-  controllers: [CnpjVerificationController],
+  controllers: [CnpjVerificationController, AppController],
 
-  providers: [CnpjVerificationService],
+  providers: [CnpjVerificationService, AppService],
 })
 export class AppModule {}
