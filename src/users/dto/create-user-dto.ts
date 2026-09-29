@@ -4,12 +4,11 @@ import {
   MinLength,
   IsEnum,
   IsOptional,
+  IsNotEmpty,
+  ValidateIf,
 } from 'class-validator';
 
-export enum RegisterUserType {
-  ONG = 'ONG',
-  DOADOR = 'DOADOR',
-}
+import { UserType } from '../entities/user.entity';
 
 export class CreateUserDto {
   @IsString()
@@ -23,24 +22,90 @@ export class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @IsEnum(RegisterUserType)
-  type!: RegisterUserType;
+  @IsEnum([UserType.ONG, UserType.DOADOR])
+  type!: UserType.ONG | UserType.DOADOR;
 
-  // Campos para ONG
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  cnpj!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  description!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  category!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  phone!: string;
+
   @IsOptional()
   @IsString()
-  cnpj?: string;
+  website?: string;
 
-  @IsOptional()
+  @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
-  description?: string;
+  @IsNotEmpty()
+  zip!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  street!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  city!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  state!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  bank!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  agency!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  account!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  accountType!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  pixKey!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  legalName!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
+  legalCpf!: string;
 
   // Campos para Doador
   @IsOptional()
   @IsString()
   cpf?: string;
-
-  @IsOptional()
-  @IsString()
-  phone?: string;
 }

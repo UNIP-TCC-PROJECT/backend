@@ -15,6 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { User, UserType, UserStatus } from './entities/user.entity';
+import { CreateUserDto } from './dto/create-user-dto';
 
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 
@@ -31,7 +32,7 @@ export class UsersService {
     private cnpjVerificationService: CnpjVerificationService,
   ) {}
 
-  async create(data: any) {
+  async create(data: CreateUserDto) {
     const existingUser = await this.repo.findOne({
       where: { email: data.email },
     });
