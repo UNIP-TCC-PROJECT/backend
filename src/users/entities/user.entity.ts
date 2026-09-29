@@ -63,6 +63,36 @@ status!: UserStatus;
   @Column({ nullable: true })
   description?: string;
 
+  @Column({ nullable: true })
+  zip?: string;
+
+  @Column({ nullable: true })
+  street?: string;
+
+  @Column({ nullable: true })
+  city?: string;
+
+  @Column({ nullable: true })
+  state?: string;
+
+  @Column({ nullable: true })
+  bank?: string;
+
+  @Column({ nullable: true })
+  agency?: string;
+
+  @Column({ nullable: true })
+  account?: string;
+
+  @Column({ nullable: true })
+  accountType?: string;
+
+  @Column({ nullable: true })
+  legalName?: string;
+
+  @Column({ nullable: true })
+  legalCpf?: string;
+
   @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
   averageRating?: number;
 
