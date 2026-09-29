@@ -1,13 +1,20 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+  Unique,
+} from 'typeorm';
 
 import { User } from '../../users/entities/user.entity';
 
-
+@Unique(['ong', 'doador'])
 @Entity('reviews')
 export class Reviews {
-    @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn()
   id!: number;
-  
+
   @Column({ type: 'int' })
   nota!: number;
 
