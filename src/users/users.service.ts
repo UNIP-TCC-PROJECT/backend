@@ -142,6 +142,8 @@ export class UsersService {
         'pixKey',
         'profileImage',
         'category',
+        'city',
+        'state',
         'createdAt',
         'averageRating',
         'totalReviews',
