@@ -12,6 +12,8 @@ import { MetasModule } from './metas/metas.module';
 import { CnpjVerificationService } from './cnpj-verification/cnpj-verification.service';
 import { CnpjVerificationController } from './cnpj-verification/cnpj-verification.controller';
 import { Medalha } from './medalhas/entities/medalha.entity';
+import { Denuncia } from './denuncias/entities/denuncia.entity';
+import { DenunciasModule } from './denuncias/denuncias.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -28,7 +30,7 @@ import { AppService } from './app.service';
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
       database: process.env.DB_NAME ?? 'tcc_db',
-      entities: [User, Reviews, Meta, Medalha],
+      entities: [User, Reviews, Meta, Medalha, Denuncia],
       synchronize: true,
     }),
 
@@ -36,6 +38,7 @@ import { AppService } from './app.service';
     ReviewsModule,
     MetasModule,
     MedalhasModule,
+    DenunciasModule,
   ],
 
   controllers: [CnpjVerificationController, AppController],
