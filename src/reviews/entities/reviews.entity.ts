@@ -18,6 +18,9 @@ export class Reviews {
   @Column({ type: 'int' })
   nota!: number;
 
+  @Column({ type: 'text', nullable: true })
+  comentario?: string | null;
+
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   ong!: User;
 

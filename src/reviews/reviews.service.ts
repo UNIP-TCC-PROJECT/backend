@@ -9,6 +9,8 @@ import { Repository } from 'typeorm';
 import { Reviews } from './entities/reviews.entity';
 import { User, UserType, UserStatus } from '../users/entities/user.entity';
 
+const MAX_COMENTARIO = 500;
+
 export interface ReviewResult {
   id: number;
   averageRating: number;
@@ -28,10 +30,23 @@ export class ReviewsService {
     ongId: number,
     doadorId: number,
     nota: number,
+    comentario?: string,
   ): Promise<ReviewResult> {
     if (!Number.isInteger(nota) || nota < 1 || nota > 5) {
       throw new BadRequestException(
         'A nota deve ser um número inteiro entre 1 e 5.',
+      );
+    }
+
+    if (comentario !== undefined && typeof comentario !== 'string') {
+      throw new BadRequestException('O comentário deve ser um texto.');
+    }
+
+    const comentarioLimpo = comentario?.trim();
+
+    if (comentarioLimpo && comentarioLimpo.length > MAX_COMENTARIO) {
+      throw new BadRequestException(
+        `O comentário deve ter no máximo ${MAX_COMENTARIO} caracteres.`,
       );
     }
 
@@ -78,10 +93,15 @@ export class ReviewsService {
 
       if (existingReview) {
         existingReview.nota = nota;
+        // undefined mantém o comentário atual; texto vazio remove.
+        if (comentarioLimpo !== undefined) {
+          existingReview.comentario = comentarioLimpo || null;
+        }
         await reviewsRepository.save(existingReview);
       } else {
         const newReview = reviewsRepository.create({
           nota,
+          comentario: comentarioLimpo || null,
           ong,
           doador,
         });
@@ -108,5 +128,36 @@ export class ReviewsService {
         totalReviews,
       };
     });
+  }
+
+  // Consulta pública: expõe só nota, texto e nome de exibição do autor.
+  async listComments(ongId: number) {
+    const reviews = await this.reviewsRepository.find({
+      where: { ong: { id: ongId } },
+      relations: { doador: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    return reviews
+      .filter((r) => !!r.comentario)
+      .map((r) => ({
+        id: r.id,
+        nota: r.nota,
+        comentario: r.comentario,
+        createdAt: r.createdAt,
+        autorNome: r.doador?.name ?? 'Doador',
+      }));
+  }
+
+  async findMine(ongId: number, doadorId: number) {
+    const review = await this.reviewsRepository.findOne({
+      where: { ong: { id: ongId }, doador: { id: doadorId } },
+    });
+
+    if (!review) {
+      return null;
+    }
+
+    return { id: review.id, nota: review.nota, comentario: review.comentario };
   }
 }
