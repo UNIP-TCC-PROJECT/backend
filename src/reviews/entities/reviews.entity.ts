@@ -25,7 +25,6 @@ export class Reviews {
     nullable: true,
   })
   comentario!: string | null;
-
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   ong!: User;
 

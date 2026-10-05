@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Reviews } from './entities/reviews.entity';
 import { User, UserType, UserStatus } from '../users/entities/user.entity';
 
+
 export interface ReviewResult {
   id: number;
   averageRating: number;
