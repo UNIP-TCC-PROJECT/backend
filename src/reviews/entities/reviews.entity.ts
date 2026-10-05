@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   CreateDateColumn,
+  UpdateDateColumn,
   Unique,
 } from 'typeorm';
 
@@ -18,9 +19,12 @@ export class Reviews {
   @Column({ type: 'int' })
   nota!: number;
 
-  @Column({ type: 'text', nullable: true })
-  comentario?: string | null;
-
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  comentario!: string | null;
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   ong!: User;
 
@@ -29,4 +33,7 @@ export class Reviews {
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
 }
