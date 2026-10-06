@@ -23,7 +23,10 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
+import { UpdateProfileDto } from './dto/update-profile-dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
+import { OngGuard } from '../auth/ong.guard';
 
 @Controller('users')
 export class UsersController {
@@ -43,15 +46,21 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(@Request() req) {
-    const user = await this.usersService.findById(req.user.id);
-    // 🔍 LOG PARA DEBUG
-    console.log('GET /users/me → usuário retornado:', {
-      id: user.id,
-      name: user.name,
-      profileImage: user.profileImage,
-    });
-    return user;
+  me(@Request() req: any) {
+    return this.usersService.findById(req.user.id);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe())
+  updateMe(
+    @Request() req: any,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ) {
+    return this.usersService.updateProfile(
+      req.user.id,
+      updateProfileDto,
+    );
   }
 
   @Post('me/avatar')
@@ -68,7 +77,14 @@ export class UsersController {
       fileFilter: (req, file, cb) => {
         const permitidos = /jpeg|jpg|png|webp/;
         const ok = permitidos.test(file.mimetype);
-        if (!ok) return cb(new BadRequestException('Formato inválido'), false);
+
+        if (!ok) {
+          return cb(
+            new BadRequestException('Formato inválido'),
+            false,
+          );
+        }
+
         cb(null, true);
       },
       limits: { fileSize: 2 * 1024 * 1024 },
@@ -76,17 +92,25 @@ export class UsersController {
   )
   async uploadAvatar(
     @UploadedFile() file: Express.Multer.File,
-    @Request() req,
+    @Request() req: any,
   ) {
-    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
-
-    console.log('📸 Upload recebido:', file.filename);
-    console.log('👤 User ID:', req.user.id);
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo enviado');
+    }
 
     const url = `/uploads/avatars/${file.filename}`;
+
     await this.usersService.updateProfileImage(req.user.id, url);
 
     return { profileImage: url };
+  }
+
+  @Get('admin-test')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  adminTest() {
+    return {
+      message: 'Acesso administrativo autorizado',
+    };
   }
 
   @Get('ongs')
@@ -100,11 +124,17 @@ export class UsersController {
   }
 
   @Patch('ongs/:id')
+  @UseGuards(JwtAuthGuard, OngGuard)
   @UsePipes(new ValidationPipe())
   updateOng(
+    @Request() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateOngDto: UpdateOngDto,
   ) {
-    return this.usersService.updateOng(id, updateOngDto);
+    return this.usersService.updateOng(
+      id,
+      updateOngDto,
+      req.user.id,
+    );
   }
 }

@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { getJwtExpiresIn, getJwtSecret } from './jwt.config';
 import { JwtStrategy } from './jwt.strategy';
+import { OngGuard } from './ong.guard';
 import { User } from '../users/entities/user.entity';
 
 @Module({
@@ -17,11 +18,13 @@ import { User } from '../users/entities/user.entity';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: getJwtSecret(config),
-        signOptions: { expiresIn: getJwtExpiresIn(config) },
+        signOptions: {
+          expiresIn: getJwtExpiresIn(config),
+        },
       }),
     }),
   ],
-  providers: [JwtStrategy],
+  providers: [JwtStrategy, OngGuard],
   exports: [JwtModule, PassportModule],
 })
 export class AuthModule {}
