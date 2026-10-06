@@ -10,7 +10,14 @@ import {
   Patch,
   UseGuards,
   Request,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { v4 as uuid } from 'uuid';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
@@ -36,27 +43,68 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  me(@Request() req) {
-    return req.user;
+  async me(@Request() req) {
+    const user = await this.usersService.findById(req.user.id);
+    // 🔍 LOG PARA DEBUG
+    console.log('GET /users/me → usuário retornado:', {
+      id: user.id,
+      name: user.name,
+      profileImage: user.profileImage,
+    });
+    return user;
   }
 
-@Get('ongs')
-findAllOngs() {
-  return this.usersService.findAllOngs();
-}
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/avatars',
+        filename: (req, file, cb) => {
+          const nome = `${uuid()}${extname(file.originalname)}`;
+          cb(null, nome);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const permitidos = /jpeg|jpg|png|webp/;
+        const ok = permitidos.test(file.mimetype);
+        if (!ok) return cb(new BadRequestException('Formato inválido'), false);
+        cb(null, true);
+      },
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+  ) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
 
-@Get('ongs/:id')
-findOngById(@Param('id', ParseIntPipe) id: number) {
-  return this.usersService.findOngById(id);
-}
+    console.log('📸 Upload recebido:', file.filename);
+    console.log('👤 User ID:', req.user.id);
 
-@Patch('ongs/:id')
-@UsePipes(new ValidationPipe())
-updateOng(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() updateOngDto: UpdateOngDto,
-) {
-  return this.usersService.updateOng(id, updateOngDto);
-}
-  
+    const url = `/uploads/avatars/${file.filename}`;
+    await this.usersService.updateProfileImage(req.user.id, url);
+
+    return { profileImage: url };
+  }
+
+  @Get('ongs')
+  findAllOngs() {
+    return this.usersService.findAllOngs();
+  }
+
+  @Get('ongs/:id')
+  findOngById(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findOngById(id);
+  }
+
+  @Patch('ongs/:id')
+  @UsePipes(new ValidationPipe())
+  updateOng(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateOngDto: UpdateOngDto,
+  ) {
+    return this.usersService.updateOng(id, updateOngDto);
+  }
 }

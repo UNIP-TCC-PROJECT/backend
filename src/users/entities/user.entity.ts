@@ -54,6 +54,7 @@ export class User {
   @Column({ nullable: true })
   pixKey?: string;
 
+
   @Column({ nullable: true })
   profileImage?: string;
 

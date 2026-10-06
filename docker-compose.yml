@@ -12,14 +12,17 @@ services:
       - JWT_EXPIRES_IN=7d
       - DB_HOST=postgres-db
       - DB_PORT=5432
-      - DB_USERNAME=postgres
+      - DB_USER=postgres            
       - DB_PASSWORD=postgres
-      - DB_DATABASE=seu_banco
+      - DB_NAME=tcc_db
+      - APP_URL=http://localhost:3000
     depends_on:
       - postgres-db
     volumes:
       - .:/app
       - /app/node_modules
+      - ./uploads:/app/uploads
+    restart: unless-stopped
 
   postgres-db:
     image: postgres:15-alpine
@@ -27,11 +30,12 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=seu_banco
+      - POSTGRES_DB=tcc_db            
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
   postgres_data:
