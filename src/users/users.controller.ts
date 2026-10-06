@@ -17,6 +17,9 @@ import { CreateUserDto } from './dto/create-user-dto';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserType } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
@@ -35,28 +38,37 @@ export class UsersController {
   }
 
   @Get('me')
-@UseGuards(JwtAuthGuard)
-me(@Request() req: any) {
-  return this.usersService.findById(req.user.id);
-}
+  @UseGuards(JwtAuthGuard)
+  me(@Request() req: any) {
+    return this.usersService.findById(req.user.id);
+  }
 
-@Get('ongs')
-findAllOngs() {
-  return this.usersService.findAllOngs();
-}
+  @Roles(UserType.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get()
+  findAllUsers() {
+    return this.usersService.findAllUsers();
+  }
 
-@Get('ongs/:id')
-findOngById(@Param('id', ParseIntPipe) id: number) {
-  return this.usersService.findOngById(id);
-}
+  @Get('ongs')
+  findAllOngs() {
+    return this.usersService.findAllOngs();
+  }
 
-@Patch('ongs/:id')
-@UsePipes(new ValidationPipe())
-updateOng(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() updateOngDto: UpdateOngDto,
-) {
-  return this.usersService.updateOng(id, updateOngDto);
-}
-  
+  @Get('ongs/:id')
+  findOngById(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findOngById(id);
+  }
+
+  @Roles(UserType.ONG)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Patch('ongs/:id')
+  @UsePipes(new ValidationPipe())
+  updateOng(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateOngDto: UpdateOngDto,
+    @Request() req: any,
+  ) {
+    return this.usersService.updateOng(id, updateOngDto, req.user.id);
+  }
 }

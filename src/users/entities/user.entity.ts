@@ -8,6 +8,7 @@ import {
 export enum UserType {
   ONG = 'ONG',
   DOADOR = 'DOADOR',
+  ADMIN = 'ADMIN',
 }
 
 @Entity()

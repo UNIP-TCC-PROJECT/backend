@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { User } from './users/entities/user.entity';
 import { Meta } from './metas/entities/meta.entity';
 import { MetasModule } from './metas/metas.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { MetasModule } from './metas/metas.module';
     UsersModule,
     ReviewsModule,
     MetasModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

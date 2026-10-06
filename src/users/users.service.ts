@@ -4,6 +4,7 @@ import {
   HttpStatus,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { User, UserType } from './entities/user.entity';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
 @Injectable()
 export class UsersService {
@@ -81,6 +83,11 @@ export class UsersService {
     return result;
   }
 
+  async findAllUsers() {
+    const users = await this.repo.find();
+    return users.map(({ password, ...rest }) => rest);
+  }
+
   async findAllOngs() {
     const ongs = await this.repo.find({
       where: {
@@ -140,7 +147,7 @@ export class UsersService {
     return ong;
   }
 
-  async updateOng(id: number, data: any) {
+  async updateOng(id: number, data: any, requesterId: number) {
     const ong = await this.repo.findOne({
       where: {
         id,
@@ -152,6 +159,10 @@ export class UsersService {
       throw new NotFoundException('ONG não encontrada');
     }
 
+    if (ong.id !== requesterId) {
+      throw new ForbiddenException('Você só pode editar o seu próprio perfil.');
+    }
+
     Object.assign(ong, data);
 
     const updatedOng = await this.repo.save(ong);
@@ -160,4 +171,28 @@ export class UsersService {
 
     return result;
   }
+
+  async createAdmin(data: CreateAdminDto) {
+  const existingUser = await this.repo.findOne({
+    where: { email: data.email },
+  });
+
+  if (existingUser) {
+    throw new ConflictException('Email já cadastrado');
+  }
+
+  const hashedPassword = await bcrypt.hash(data.password, 10);
+
+  const admin = this.repo.create({
+    name: data.name,
+    email: data.email,
+    password: hashedPassword,
+    type: UserType.ADMIN,
+  });
+
+  const savedAdmin = await this.repo.save(admin);
+
+  const { password, ...result } = savedAdmin;
+  return result;
+}
 }

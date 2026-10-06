@@ -30,9 +30,6 @@ export class ReviewsService {
     if (!doador) {
       throw new NotFoundException('Doador não encontrado.');
     }
-    if (doador.type !== UserType.DOADOR) {
-      throw new BadRequestException('Esse usuário não é um doador.');
-    }
 
     const existingReview = await this.reviewsRepository.findOne({
       where: { ong: { id: ongId }, doador: { id: doadorId } },
