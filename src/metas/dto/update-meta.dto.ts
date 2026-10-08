@@ -1,5 +1,15 @@
-import { IsOptional, IsString, IsNumber, IsBoolean, IsDateString, IsEnum, Min, MaxLength } from "class-validator";
-import { MetaType, MetaPriority } from "../entities/meta.entity";
+import {
+  IsOptional,
+  IsString,
+  IsNumber,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  Min,
+  MaxLength,
+} from 'class-validator';
+
+import { MetaType, MetaPriority } from '../entities/meta.entity';
 
 export class UpdateMetaDto {
   @IsOptional()
@@ -12,8 +22,16 @@ export class UpdateMetaDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  details?: string;
+
+  @IsOptional()
   @IsEnum(MetaType)
   type?: MetaType;
+
+  @IsOptional()
+  @IsEnum(MetaPriority)
+  priority?: MetaPriority;
 
   @IsOptional()
   @IsNumber()
@@ -41,19 +59,11 @@ export class UpdateMetaDto {
 
   @IsOptional()
   @IsDateString()
-  deadline?: Date;
+  deadline?: string;
 
   @IsOptional()
   @IsBoolean()
   active?: boolean;
-
-  @IsOptional()
-  @IsEnum(MetaPriority)
-  priority?: MetaPriority;
-
-  @IsOptional()
-  @IsString()
-  details?: string;
 
   @IsOptional()
   @IsString()

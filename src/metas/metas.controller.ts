@@ -4,37 +4,29 @@ import {
   Get,
   Patch,
   Delete,
-  Body,
   Param,
   ParseIntPipe,
+  Body,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
   Request,
 } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OngGuard } from '../auth/ong.guard';
 import { MetasService } from './metas.service';
 import { CreateMetaDto } from './dto/create-meta.dto';
 import { UpdateMetaDto } from './dto/update-meta.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('metas')
 export class MetasController {
   constructor(private readonly metasService: MetasService) {}
 
-  @Post()
+  @Get('mine')
   @UseGuards(JwtAuthGuard)
-  async create(@Body() createMetaDto: CreateMetaDto, @Request() req) {
-    console.log('🔍 ====================');
-    console.log('🔍 req.user:', req.user);
-    console.log('🔍 req.user.id:', req.user?.id);
-    console.log('🔍 req.user.sub:', req.user?.sub);
-    console.log('🔍 ====================');
-    
-    const ongId = req.user?.id || req.user?.sub;
-    
-    if (!ongId) {
-      throw new Error('ID da ONG não encontrado no token');
-    }
-    
-    return this.metasService.create(createMetaDto, ongId);
+  findMine(@Request() req: any) {
+    return this.metasService.findMine(req.user.id);
   }
 
   @Get('ong/:id')
@@ -49,21 +41,33 @@ export class MetasController {
     return this.metasService.findOne(id);
   }
 
+  @Post()
+  @UseGuards(JwtAuthGuard, OngGuard)
+  @UsePipes(new ValidationPipe())
+  create(
+    @Request() req: any,
+    @Body() data: CreateMetaDto,
+  ) {
+    return this.metasService.create(req.user.id, data);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe())
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateMetaDto: UpdateMetaDto,
-    @Request() req,
+    @Body() data: UpdateMetaDto,
+    @Request() req: any,
   ) {
-    const ongId = req.user?.id || req.user?.sub;
-    return this.metasService.update(id, updateMetaDto, ongId);
+    return this.metasService.update(id, req.user.id, data);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    const ongId = req.user?.id || req.user?.sub;
-    return this.metasService.remove(id, ongId);
+  deactivate(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: any,
+  ) {
+    return this.metasService.deactivate(id, req.user.id);
   }
 }

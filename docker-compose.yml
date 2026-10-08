@@ -6,32 +6,38 @@ services:
     container_name: nest-api
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=development
-      - JWT_SECRET=minha_chave_secreta_muito_segura_123456
-      - JWT_EXPIRES_IN=7d
-      - DB_HOST=postgres-db
-      - DB_PORT=5432
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=postgres
-      - DB_DATABASE=seu_banco
     depends_on:
       - postgres-db
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres-db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: tcc_db
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-trocar-em-producao}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      APP_URL: http://localhost:3000
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
     volumes:
       - .:/app
       - /app/node_modules
+      - ./uploads:/app/uploads
+    restart: unless-stopped
 
   postgres-db:
     image: postgres:15-alpine
     container_name: postgres-db
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=seu_banco
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tcc_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
 volumes:
   postgres_data:

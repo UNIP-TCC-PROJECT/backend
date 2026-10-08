@@ -1,10 +1,20 @@
-import { IsString, IsNumber, IsBoolean, IsDateString, IsOptional, IsEnum, Min, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsBoolean,
+  IsDateString,
+  IsOptional,
+  IsEnum,
+  Min,
+  MaxLength,
+} from 'class-validator';
+
 import { MetaType, MetaPriority } from '../entities/meta.entity';
 
 export class CreateMetaDto {
   @IsString()
   @MaxLength(255)
-  title!: string;  // ← Adicione o "!" aqui
+  title!: string;
 
   @IsOptional()
   @IsString()
@@ -40,7 +50,7 @@ export class CreateMetaDto {
 
   @IsOptional()
   @IsDateString()
-  deadline?: Date;
+  deadline?: string;
 
   @IsOptional()
   @IsBoolean()
