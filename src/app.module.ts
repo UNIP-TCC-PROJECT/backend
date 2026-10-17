@@ -16,6 +16,8 @@ import { Denuncia } from './denuncias/entities/denuncia.entity';
 import { DenunciasModule } from './denuncias/denuncias.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PublicacoesModule } from './publicacoes/publicacoes.module';
+import { Publicacao } from './publicacoes/entities/publicacao.entity';
 
 @Module({
   imports: [
@@ -30,7 +32,7 @@ import { AppService } from './app.service';
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
       database: process.env.DB_NAME ?? 'tcc_db',
-      entities: [User, Reviews, Meta, Medalha, Denuncia],
+      entities: [User, Reviews, Meta, Medalha, Denuncia, Publicacao],
       synchronize: true,
     }),
 
@@ -39,6 +41,7 @@ import { AppService } from './app.service';
     MetasModule,
     MedalhasModule,
     DenunciasModule,
+    PublicacoesModule,
   ],
 
   controllers: [CnpjVerificationController, AppController],
