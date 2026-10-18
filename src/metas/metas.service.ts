@@ -46,13 +46,21 @@ export class MetasService {
 
   async findMine(ongId: number) {
     return this.metaRepo.find({
-      where: {
-        ongId,
-      },
-      order: {
-        id: 'DESC',
-      },
+      where: { ongId },
+      order: { id: 'DESC' },
     });
+  }
+
+  async findOne(id: number) {
+    const meta = await this.metaRepo.findOne({
+      where: { id },
+    });
+
+    if (!meta) {
+      throw new NotFoundException('Meta não encontrada');
+    }
+
+    return meta;
   }
 
   async create(ongId: number, data: CreateMetaDto) {
@@ -93,15 +101,22 @@ export class MetasService {
     const meta = await this.findOwnedMeta(id, ongId);
 
     if (data.title !== undefined) meta.title = data.title;
-    if (data.description !== undefined) meta.description = data.description;
+    if (data.description !== undefined) {
+      meta.description = data.description;
+    }
     if (data.details !== undefined) meta.details = data.details;
     if (data.type !== undefined) meta.type = data.type;
     if (data.priority !== undefined) meta.priority = data.priority;
-    if (data.targetAmount !== undefined) meta.targetAmount = data.targetAmount;
-    if (data.targetQuantity !== undefined)
+    if (data.targetAmount !== undefined) {
+      meta.targetAmount = data.targetAmount;
+    }
+    if (data.targetQuantity !== undefined) {
       meta.targetQuantity = data.targetQuantity;
+    }
     if (data.unit !== undefined) meta.unit = data.unit;
-    if (data.deadline !== undefined) meta.deadline = new Date(data.deadline);
+    if (data.deadline !== undefined) {
+      meta.deadline = new Date(data.deadline);
+    }
     if (data.image !== undefined) meta.image = data.image;
 
     return this.metaRepo.save(meta);
@@ -116,14 +131,12 @@ export class MetasService {
   }
 
   private async findOwnedMeta(id: number, ongId: number) {
-    const meta = await this.metaRepo.findOne({ where: { id } });
-
-    if (!meta) {
-      throw new NotFoundException('Meta não encontrada');
-    }
+    const meta = await this.findOne(id);
 
     if (meta.ongId !== ongId) {
-      throw new ForbiddenException('Esta meta não pertence a esta ONG');
+      throw new ForbiddenException(
+        'Esta meta não pertence a esta ONG',
+      );
     }
 
     return meta;

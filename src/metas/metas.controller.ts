@@ -1,7 +1,7 @@
 import {
   Controller,
-  Get,
   Post,
+  Get,
   Patch,
   Delete,
   Param,
@@ -34,6 +34,12 @@ export class MetasController {
     return this.metasService.findByOng(id);
   }
 
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.metasService.findOne(id);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, OngGuard)
   @UsePipes(new ValidationPipe())
@@ -57,7 +63,10 @@ export class MetasController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  deactivate(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
+  deactivate(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: any,
+  ) {
     return this.metasService.deactivate(id, req.user.id);
   }
 }

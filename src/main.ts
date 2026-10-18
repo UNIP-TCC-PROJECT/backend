@@ -10,24 +10,21 @@ async function bootstrap() {
     AppModule,
   );
 
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+    index: false,
+    dotfiles: 'deny',
+    setHeaders(response) {
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  });
+
   app.enableCors({
     origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
-
-  app.useStaticAssets(
-    join(process.cwd(), 'uploads', 'publicacoes'),
-    {
-      prefix: '/uploads/publicacoes/',
-      index: false,
-      dotfiles: 'deny',
-      setHeaders(response) {
-        response.setHeader('X-Content-Type-Options', 'nosniff');
-      },
-    },
-  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -36,6 +33,8 @@ async function bootstrap() {
   );
 
   await app.listen(3000);
+
+  console.log('🚀 Backend rodando em http://localhost:3000');
 }
 
 bootstrap();

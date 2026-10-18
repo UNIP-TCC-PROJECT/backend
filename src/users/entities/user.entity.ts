@@ -111,6 +111,7 @@ status!: UserStatus;
   @Column({ nullable: true })
   pixKey?: string;
 
+
   @Column({ nullable: true })
   profileImage?: string;
 

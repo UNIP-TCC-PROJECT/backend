@@ -1,10 +1,12 @@
 import {
-  IsEnum,
-  IsNumber,
   IsOptional,
   IsString,
+  IsNumber,
+  IsBoolean,
   IsDateString,
+  IsEnum,
   Min,
+  MaxLength,
 } from 'class-validator';
 
 import { MetaType, MetaPriority } from '../entities/meta.entity';
@@ -12,18 +14,13 @@ import { MetaType, MetaPriority } from '../entities/meta.entity';
 export class UpdateMetaDto {
   @IsOptional()
   @IsString()
+  @MaxLength(255)
   title?: string;
 
-  @IsOptional()
-  @IsEnum(MetaPriority)
-  priority?: MetaPriority;
-
-  // Descrição curta
   @IsOptional()
   @IsString()
   description?: string;
 
-  // Descrição completa da campanha
   @IsOptional()
   @IsString()
   details?: string;
@@ -32,17 +29,29 @@ export class UpdateMetaDto {
   @IsEnum(MetaType)
   type?: MetaType;
 
-  // Metas financeiras
+  @IsOptional()
+  @IsEnum(MetaPriority)
+  priority?: MetaPriority;
+
   @IsOptional()
   @IsNumber()
   @Min(0)
   targetAmount?: number;
 
-  // Metas materiais e voluntariado
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentAmount?: number;
+
   @IsOptional()
   @IsNumber()
   @Min(0)
   targetQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentQuantity?: number;
 
   @IsOptional()
   @IsString()
@@ -52,7 +61,10 @@ export class UpdateMetaDto {
   @IsDateString()
   deadline?: string;
 
-  // Futuramente podemos usar uma URL de imagem
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
   @IsOptional()
   @IsString()
   image?: string;

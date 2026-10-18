@@ -35,9 +35,9 @@ describe('MetasController', () => {
     const req = { user: { id: 42, email: 'ong@example.com' } };
     const dto = { title: 'Nova meta' } as any;
 
-    controller.create(dto, req);
+    controller.create(req, dto);
 
-    expect(mockMetasService.create).toHaveBeenCalledWith(dto, 42);
+    expect(mockMetasService.create).toHaveBeenCalledWith(42, dto);
   });
 
   it('should pass the authenticated user id when updating a meta', () => {

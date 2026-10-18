@@ -10,7 +10,14 @@ import {
   Patch,
   UseGuards,
   Request,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { randomUUID } from 'crypto';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
@@ -45,6 +52,38 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   me(@Request() req: any) {
     return this.usersService.findById(req.user.id);
+  }
+
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/avatars',
+        filename: (req, file, cb) => {
+          cb(null, `${randomUUID()}${extname(file.originalname)}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+          return cb(new BadRequestException('Formato inválido'), false);
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo enviado');
+    }
+    const url = `/uploads/avatars/${file.filename}`;
+    await this.usersService.updateProfileImage(req.user.id, url);
+    return { profileImage: url };
   }
 
   @Get('admin-test')

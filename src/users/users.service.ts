@@ -118,6 +118,15 @@ export class UsersService {
     return result;
   }
 
+  async updateProfileImage(userId: number, profileImage: string) {
+    const user = await this.repo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    await this.repo.update(userId, { profileImage });
+    return { profileImage };
+  }
+
   async findAllUsers() {
     const users = await this.repo.find();
     return users.map(({ password, ...rest }) => rest);
