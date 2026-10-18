@@ -17,16 +17,20 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { AdminGuard } from '../auth/admin.guard';
 import { OngGuard } from '../auth/ong.guard';
+import { UserType } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
@@ -50,19 +54,6 @@ export class UsersController {
     return this.usersService.findById(req.user.id);
   }
 
-  @Patch('me')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ValidationPipe())
-  updateMe(
-    @Request() req: any,
-    @Body() updateProfileDto: UpdateProfileDto,
-  ) {
-    return this.usersService.updateProfile(
-      req.user.id,
-      updateProfileDto,
-    );
-  }
-
   @Post('me/avatar')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
@@ -70,21 +61,14 @@ export class UsersController {
       storage: diskStorage({
         destination: './uploads/avatars',
         filename: (req, file, cb) => {
-          const nome = `${uuid()}${extname(file.originalname)}`;
-          cb(null, nome);
+          cb(null, `${randomUUID()}${extname(file.originalname)}`);
         },
       }),
       fileFilter: (req, file, cb) => {
-        const permitidos = /jpeg|jpg|png|webp/;
-        const ok = permitidos.test(file.mimetype);
-
-        if (!ok) {
-          return cb(
-            new BadRequestException('Formato inválido'),
-            false,
-          );
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.mimetype)) {
+          return cb(new BadRequestException('Formato inválido'), false);
         }
-
         cb(null, true);
       },
       limits: { fileSize: 2 * 1024 * 1024 },
@@ -97,11 +81,8 @@ export class UsersController {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }
-
     const url = `/uploads/avatars/${file.filename}`;
-
     await this.usersService.updateProfileImage(req.user.id, url);
-
     return { profileImage: url };
   }
 
@@ -111,6 +92,20 @@ export class UsersController {
     return {
       message: 'Acesso administrativo autorizado',
     };
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe())
+  updateMe(@Request() req: any, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.usersService.updateProfile(req.user.id, updateProfileDto);
+  }
+
+  @Get()
+  @Roles(UserType.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  findAllUsers() {
+    return this.usersService.findAllUsers();
   }
 
   @Get('ongs')
@@ -124,17 +119,14 @@ export class UsersController {
   }
 
   @Patch('ongs/:id')
-  @UseGuards(JwtAuthGuard, OngGuard)
+  @Roles(UserType.ONG)
+  @UseGuards(JwtAuthGuard, RolesGuard, OngGuard)
   @UsePipes(new ValidationPipe())
   updateOng(
-    @Request() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() updateOngDto: UpdateOngDto,
+    @Request() req: any,
   ) {
-    return this.usersService.updateOng(
-      id,
-      updateOngDto,
-      req.user.id,
-    );
+    return this.usersService.updateOng(id, updateOngDto, req.user.id);
   }
 }

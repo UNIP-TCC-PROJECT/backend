@@ -20,9 +20,8 @@ export class CreateMetaDto {
   @IsString()
   description?: string;
 
-  @IsOptional()
   @IsEnum(MetaType)
-  type?: MetaType;
+  type!: MetaType;
 
   @IsOptional()
   @IsNumber()

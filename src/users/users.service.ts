@@ -5,17 +5,21 @@ import {
   ConflictException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
+import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
 @Injectable()
 export class UsersService {
@@ -36,10 +40,13 @@ export class UsersService {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
-
     let medalhaVerde = false;
 
     if (data.type === UserType.ONG) {
+      if (!data.cnpj) {
+        throw new BadRequestException('CNPJ é obrigatório para ONGs');
+      }
+
       const verificacao = await this.cnpjVerificationService.consultarCnpj(
         data.cnpj,
         data.name,
@@ -55,19 +62,16 @@ export class UsersService {
       medalhaVerde,
     });
 
-    const savedUser = (await this.repo.save(user)) as unknown as User;
+    const savedUser = await this.repo.save(user);
     const { password, ...result } = savedUser;
 
     return result;
   }
 
   async login(email: string, password: string) {
-    const users = await this.repo.find({
+    const user = await this.repo.findOne({
       where: { email },
-      take: 1,
     });
-
-    const user = users[0] as unknown as User;
 
     if (!user) {
       throw new HttpException(
@@ -76,16 +80,17 @@ export class UsersService {
       );
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.password,
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       throw new HttpException(
         'Email ou senha inválidos',
         HttpStatus.UNAUTHORIZED,
       );
+    }
+
+    if (user.status !== UserStatus.ATIVO) {
+      throw new ForbiddenException('Esta conta não está ativa');
     }
 
     const payload: JwtPayload = {
@@ -110,27 +115,54 @@ export class UsersService {
     }
 
     const { password, ...result } = user;
-
     return result;
   }
 
   async updateProfileImage(userId: number, profileImage: string) {
-    const user = await this.repo.findOne({
-      where: { id: userId },
-    });
-
+    const user = await this.repo.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
-
     await this.repo.update(userId, { profileImage });
-
     return { profileImage };
   }
 
+  async findAllUsers() {
+    const users = await this.repo.find();
+    return users.map(({ password, ...rest }) => rest);
+  }
+
   async findAllOngs() {
-    const ongs = await this.repo.find({
+    return this.repo.find({
+      where: { type: UserType.ONG },
+      select: [
+        'id',
+        'name',
+        'email',
+        'cnpj',
+        'phone',
+        'description',
+        'whatsapp',
+        'instagram',
+        'website',
+        'pixKey',
+        'profileImage',
+        'category',
+        'city',
+        'state',
+        'createdAt',
+        'averageRating',
+        'totalReviews',
+        'status',
+        'medalhaVerde',
+      ],
+    });
+  }
+
+  async findOngById(id: number) {
+    const ong = await this.repo.findOne({
       where: {
+        id,
         type: UserType.ONG,
       },
       select: [
@@ -156,36 +188,6 @@ export class UsersService {
       ],
     });
 
-    return ongs;
-  }
-
-  async findOngById(id: number) {
-    const ong = await this.repo.findOne({
-      where: {
-        id,
-        type: UserType.ONG,
-      },
-      select: [
-        'id',
-        'name',
-        'email',
-        'cnpj',
-        'phone',
-        'description',
-        'whatsapp',
-        'instagram',
-        'website',
-        'pixKey',
-        'profileImage',
-        'category',
-        'createdAt',
-        'averageRating',
-        'totalReviews',
-        'status',
-        'medalhaVerde',
-      ],
-    });
-
     if (!ong) {
       throw new NotFoundException('ONG não encontrada');
     }
@@ -193,7 +195,7 @@ export class UsersService {
     return ong;
   }
 
-  async updateProfile(id: number, data: any) {
+  async updateProfile(id: number, data: UpdateProfileDto) {
     const user = await this.repo.findOne({
       where: { id },
     });
@@ -212,7 +214,28 @@ export class UsersService {
       }
     }
 
-    Object.assign(user, data);
+    const allowedFields = [
+      'name',
+      'email',
+      'phone',
+      'description',
+      'zip',
+      'street',
+      'city',
+      'state',
+      'whatsapp',
+      'instagram',
+      'website',
+      'profileImage',
+    ];
+
+    for (const field of allowedFields) {
+      if (Object.prototype.hasOwnProperty.call(data, field)) {
+        Object.assign(user, {
+          [field]: (data as any)[field],
+        });
+      }
+    }
 
     const updatedUser = await this.repo.save(user);
     const { password, ...result } = updatedUser;
@@ -250,5 +273,28 @@ export class UsersService {
     return result;
   }
 
-  
+  async createAdmin(data: CreateAdminDto) {
+    const existingUser = await this.repo.findOne({
+      where: { email: data.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email já cadastrado');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    const admin = this.repo.create({
+      name: data.name,
+      email: data.email,
+      password: hashedPassword,
+      type: UserType.ADMIN,
+      status: UserStatus.ATIVO,
+    });
+
+    const savedAdmin = await this.repo.save(admin);
+    const { password, ...result } = savedAdmin;
+
+    return result;
+  }
 }

@@ -82,7 +82,7 @@ describe('MetasService', () => {
   it('should create a meta bound to the authenticated ONG id, ignoring any other ongId', async () => {
     mockUserRepo.findOne.mockResolvedValue({ id: 42, type: UserType.ONG });
 
-    const result = await service.create({ title: 'Meta' } as any, 42);
+    const result = await service.create(42, { title: 'Meta', ongId: 99 } as any);
 
     expect(result.ongId).toBe(42);
   });

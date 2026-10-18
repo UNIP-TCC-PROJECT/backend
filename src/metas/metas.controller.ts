@@ -30,7 +30,6 @@ export class MetasController {
   }
 
   @Get('ong/:id')
-  @UseGuards(JwtAuthGuard)
   findByOng(@Param('id', ParseIntPipe) id: number) {
     return this.metasService.findByOng(id);
   }
