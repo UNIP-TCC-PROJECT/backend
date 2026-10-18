@@ -1,3 +1,4 @@
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -9,7 +10,6 @@ export enum UserType {
   ONG = 'ONG',
   DOADOR = 'DOADOR',
   ADMIN = 'ADMIN',
-
 }
 
 export enum UserStatus {
