@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   HttpException,
@@ -52,15 +51,11 @@ export class UsersService {
 
     let medalhaVerde = false;
 
-        if (data.type === UserType.ONG) {
+    if (data.type === UserType.ONG) {
       if (!data.cnpj) {
         throw new BadRequestException('CNPJ é obrigatório para ONGs');
       }
 
-      if (!data.cnpj) {
-        throw new BadRequestException('CNPJ é obrigatório para ONGs');
-      }
-      
       const verificacao = await this.cnpjVerificationService.consultarCnpj(
         data.cnpj,
         data.name,
@@ -132,6 +127,7 @@ export class UsersService {
     }
 
     const { password, ...result } = user;
+
     return result;
   }
 

@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Post,
@@ -48,11 +47,14 @@ export class UsersController {
     return this.usersService.findById(req.user.id);
   }
 
-  @Roles(UserType.ADMIN)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Get()
-  findAllUsers() {
-    return this.usersService.findAllUsers();
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe())
+  updateMe(
+    @Request() req: any,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ) {
+    return this.usersService.updateProfile(req.user.id, updateProfileDto);
   }
 
   @Get('admin-test')
@@ -63,14 +65,11 @@ export class UsersController {
     };
   }
 
-  @Patch('me')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ValidationPipe())
-  updateMe(
-    @Request() req: any,
-    @Body() updateProfileDto: UpdateProfileDto,
-  ) {
-    return this.usersService.updateProfile(req.user.id, updateProfileDto);
+  @Roles(UserType.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get()
+  findAllUsers() {
+    return this.usersService.findAllUsers();
   }
 
   @Get('ongs')

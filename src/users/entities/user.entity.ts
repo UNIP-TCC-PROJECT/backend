@@ -1,4 +1,3 @@
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -51,6 +50,12 @@ export class User {
   @Column({ nullable: true })
   cnpj?: string;
 
+  @Column({ default: false })
+  medalhaVerde!: boolean;
+
+  @Column({ default: false })
+  medalhaBranca!: boolean;
+
   @Column({ nullable: true })
   phone?: string;
 
@@ -86,12 +91,6 @@ export class User {
 
   @Column({ nullable: true })
   legalCpf?: string;
-
-  @Column({ default: false })
-  medalhaVerde!: boolean;
-
-  @Column({ default: false })
-  medalhaBranca!: boolean;
 
   @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
   averageRating?: number;
