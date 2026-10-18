@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   HttpException,
@@ -15,12 +14,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
-import {
-  User,
-  UserType,
-  UserStatus,
-} from './entities/user.entity';
-
+import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
@@ -32,9 +26,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private repo: Repository<User>,
-
     private jwtService: JwtService,
-
     private cnpjVerificationService: CnpjVerificationService,
   ) {}
 
@@ -48,7 +40,6 @@ export class UsersService {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
-
     let medalhaVerde = false;
 
     if (data.type === UserType.ONG) {
@@ -89,10 +80,7 @@ export class UsersService {
       );
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.password,
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       throw new HttpException(
@@ -127,21 +115,17 @@ export class UsersService {
     }
 
     const { password, ...result } = user;
-
     return result;
   }
 
   async findAllUsers() {
     const users = await this.repo.find();
-
     return users.map(({ password, ...rest }) => rest);
   }
 
   async findAllOngs() {
     return this.repo.find({
-      where: {
-        type: UserType.ONG,
-      },
+      where: { type: UserType.ONG },
       select: [
         'id',
         'name',

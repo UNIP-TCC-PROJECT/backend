@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -10,15 +9,9 @@ import { AuthModule } from '../auth/auth.module';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User]),
-    AuthModule,
-  ],
+  imports: [TypeOrmModule.forFeature([User]), AuthModule],
   controllers: [UsersController],
-  providers: [
-    UsersService,
-    CnpjVerificationService,
-  ],
+  providers: [UsersService, CnpjVerificationService],
   exports: [UsersService],
 })
 export class UsersModule {}

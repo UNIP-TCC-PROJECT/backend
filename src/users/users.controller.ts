@@ -1,4 +1,3 @@
-
 import {
   Controller,
   Post,
@@ -48,22 +47,19 @@ export class UsersController {
     return this.usersService.findById(req.user.id);
   }
 
-  @Patch('me')
-  @UseGuards(JwtAuthGuard)
-  @UsePipes(new ValidationPipe())
-  updateMe(
-    @Request() req: any,
-    @Body() updateProfileDto: UpdateProfileDto,
-  ) {
-    return this.usersService.updateProfile(req.user.id, updateProfileDto);
-  }
-
   @Get('admin-test')
   @UseGuards(JwtAuthGuard, AdminGuard)
   adminTest() {
     return {
       message: 'Acesso administrativo autorizado',
     };
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe())
+  updateMe(@Request() req: any, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.usersService.updateProfile(req.user.id, updateProfileDto);
   }
 
   @Get()

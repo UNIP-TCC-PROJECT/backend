@@ -19,12 +19,19 @@ export enum UserStatus {
 }
 
 @Entity()
-export class User {
+export class User { 
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Column()
   name!: string;
+
+  @Column({
+  type: 'enum',
+  enum: UserStatus,
+  default: UserStatus.ATIVO,
+})
+status!: UserStatus;
 
   @Column({ unique: true })
   email!: string;
@@ -37,13 +44,6 @@ export class User {
     enum: UserType,
   })
   type!: UserType;
-
-  @Column({
-    type: 'enum',
-    enum: UserStatus,
-    default: UserStatus.ATIVO,
-  })
-  status!: UserStatus;
 
   @Column({ nullable: true })
   cpf?: string;
