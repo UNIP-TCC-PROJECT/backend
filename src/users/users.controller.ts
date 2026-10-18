@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Post,
@@ -65,9 +66,9 @@ export class UsersController {
     };
   }
 
+  @Get()
   @Roles(UserType.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Get()
   findAllUsers() {
     return this.usersService.findAllUsers();
   }
@@ -82,9 +83,9 @@ export class UsersController {
     return this.usersService.findOngById(id);
   }
 
+  @Patch('ongs/:id')
   @Roles(UserType.ONG)
   @UseGuards(JwtAuthGuard, RolesGuard, OngGuard)
-  @Patch('ongs/:id')
   @UsePipes(new ValidationPipe())
   updateOng(
     @Param('id', ParseIntPipe) id: number,

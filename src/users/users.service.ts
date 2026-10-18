@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   HttpException,
@@ -22,7 +23,6 @@ import {
 
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
-
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
@@ -133,6 +133,7 @@ export class UsersService {
 
   async findAllUsers() {
     const users = await this.repo.find();
+
     return users.map(({ password, ...rest }) => rest);
   }
 
@@ -237,7 +238,9 @@ export class UsersService {
 
     for (const field of allowedFields) {
       if (Object.prototype.hasOwnProperty.call(data, field)) {
-        Object.assign(user, { [field]: (data as any)[field] });
+        Object.assign(user, {
+          [field]: (data as any)[field],
+        });
       }
     }
 
