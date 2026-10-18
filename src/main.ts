@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
+import { join } from 'node:path';
 
 import { AppModule } from './app.module';
 
@@ -12,6 +12,11 @@ async function bootstrap() {
 
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
+    index: false,
+    dotfiles: 'deny',
+    setHeaders(response) {
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+    },
   });
 
   app.enableCors({
