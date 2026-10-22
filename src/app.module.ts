@@ -31,6 +31,11 @@ import { AppController } from './app.controller';
 
 import { AdminModule } from './admin/admin.module';
 import { FavoritosModule } from './favoritos/favoritos.module';
+import { Interesse } from './interesses/entities/interesse.entity';
+import { Conversa } from './conversas/entities/conversa.entity';
+import { Mensagem } from './conversas/entities/mensagem.entity';
+import { InteressesModule } from './interesses/interesses.module';
+import { ConversasModule } from './conversas/conversas.module';
 
 @Module({
   imports: [
@@ -45,7 +50,18 @@ import { FavoritosModule } from './favoritos/favoritos.module';
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
       database: process.env.DB_NAME ?? 'tcc_db',
-      entities: [User, Reviews, Meta, Medalha, Denuncia, Publicacao, Favorito],
+      entities: [
+        User,
+        Reviews,
+        Meta,
+        Medalha,
+        Denuncia,
+        Publicacao,
+        Favorito,
+        Interesse,
+        Conversa,
+        Mensagem,
+      ],
       synchronize: true,
     }),
 
@@ -57,7 +73,8 @@ import { FavoritosModule } from './favoritos/favoritos.module';
     DenunciasModule,
     FavoritosModule,
     PublicacoesModule,
-    FavoritosModule,
+    InteressesModule,
+    ConversasModule,
   ],
   controllers: [CnpjVerificationController, AppController],
   providers: [CnpjVerificationService, AppService],
