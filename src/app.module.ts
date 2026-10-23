@@ -6,6 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from './users/users.module';
 import { User } from './users/entities/user.entity';
 
+import { Favorito } from './favoritos/entities/favorito.entity';
+
 import { Reviews } from './reviews/entities/reviews.entity';
 import { ReviewsModule } from './reviews/reviews.module';
 
@@ -29,6 +31,12 @@ import { PublicacoesModule } from './publicacoes/publicacoes.module';
 import { AppController } from './app.controller';
 
 import { AdminModule } from './admin/admin.module';
+import { FavoritosModule } from './favoritos/favoritos.module';
+import { Interesse } from './interesses/entities/interesse.entity';
+import { Conversa } from './conversas/entities/conversa.entity';
+import { Mensagem } from './conversas/entities/mensagem.entity';
+import { InteressesModule } from './interesses/interesses.module';
+import { ConversasModule } from './conversas/conversas.module';
 
 @Module({
   imports: [
@@ -42,8 +50,21 @@ import { AdminModule } from './admin/admin.module';
       port: parseInt(process.env.DB_PORT ?? '5432', 10),
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
-      database: process.env.DB_NAME ?? 'tcc_db',
-      entities: [User, Reviews, Meta, Medalha, Denuncia, Publicacao, PedidoMedalhaBranca, DocumentoMedalhaBranca],
+            database: process.env.DB_NAME ?? 'tcc_db',
+      entities: [
+        User,
+        Reviews,
+        Meta,
+        Medalha,
+        Denuncia,
+        Publicacao,
+        Favorito,
+        Interesse,
+        Conversa,
+        Mensagem,
+        PedidoMedalhaBranca,
+        DocumentoMedalhaBranca,
+      ],
       synchronize: true,
     }),
 
@@ -53,7 +74,10 @@ import { AdminModule } from './admin/admin.module';
     AdminModule,
     MedalhasModule,
     DenunciasModule,
+    FavoritosModule,
     PublicacoesModule,
+    InteressesModule,
+    ConversasModule,
   ],
   controllers: [CnpjVerificationController, AppController],
   providers: [CnpjVerificationService, AppService],
