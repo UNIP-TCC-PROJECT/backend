@@ -1,0 +1,20 @@
+# pack-refs with: peeled fully-peeled sorted 
+662b8e42cf79a089c056418ee8a9f5cb7a06c751 refs/heads/acess-token
+c917fe8331640ac5d53d1619eb0440ddbd3d9c37 refs/heads/main
+00cad2378aa8b9d208b1dd886bcc1f127e55a473 refs/heads/medalha-branca
+7526f102fe4142940bd8b524748084f0d297d6f7 refs/remotes/origin/Avaliação
+662b8e42cf79a089c056418ee8a9f5cb7a06c751 refs/remotes/origin/acess-token
+38a6321751c0b5d7bec7db80431adcadce2cb1d1 refs/remotes/origin/comentarios-avaliacoes
+f7fcb894e2cfdd17ef7fb98be29ccdfda69addbd refs/remotes/origin/feat/gerenciamento-de-metas-da-ong
+e86528b6110ecedcbedd2a742a45f8bb8f82c67a refs/remotes/origin/feat/mudar-tema-do-site
+5efd53b47ae2102450c13a80e67d19165e3a594f refs/remotes/origin/feat/tela-de-perfil
+14fa80aa07fabfd2d6b5f0efeb0cb691d8587ed2 refs/remotes/origin/fix/01-06
+75794caef031786f746adaad018bc4d61742fdf6 refs/remotes/origin/fix/03-rotas-ongs-destaque
+d804fadb76c98acb31c4ace381faf6e4b48d1bf2 refs/remotes/origin/fix/04
+bcddcda89c552e16edf007411f5d367d005d5d95 refs/remotes/origin/fix/ongs-destaque-api
+00cad2378aa8b9d208b1dd886bcc1f127e55a473 refs/remotes/origin/main
+a7e7bb090c748678708570966cf129c70a60e81c refs/remotes/origin/medalha-branca
+50813ccac8afa7b0cd6120e64b891dbe56610ad1 refs/remotes/origin/ong-detalhes
+d3e1f80eb61ef6688508346f2a1b2ccf18219f22 refs/remotes/origin/ong-verificacao
+1f5b42839db41ebb1002b5eb44bc9ab39716933a refs/remotes/origin/Área-Administrativa
+01a26dc87d26e04175a23e9e9d102420f971467a refs/stash
