@@ -22,6 +22,7 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
+  "include": ["src/**/*.ts", "test/**/*.ts", "seed-ongs.ts"],
   "watchOptions": {
     "watchFile": "dynamicPriorityPolling",
     "watchDirectory": "dynamicPriorityPolling",

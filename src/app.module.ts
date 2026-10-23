@@ -15,6 +15,7 @@ import { Meta } from './metas/entities/meta.entity';
 import { MetasModule } from './metas/metas.module';
 import { CnpjVerificationController } from './cnpj-verification/cnpj-verification.controller';
 import { Medalha } from './medalhas/entities/medalha.entity';
+import { PedidoMedalhaBranca, DocumentoMedalhaBranca } from './medalhas/entities/pedido-medalha-branca.entity';
 import { Denuncia } from './denuncias/entities/denuncia.entity';
 import { AppService } from './app.service';
 import { Publicacao } from './publicacoes/entities/publicacao.entity';
@@ -49,7 +50,7 @@ import { ConversasModule } from './conversas/conversas.module';
       port: parseInt(process.env.DB_PORT ?? '5432', 10),
       username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
       password: process.env.DB_PASSWORD ?? 'postgres',
-      database: process.env.DB_NAME ?? 'tcc_db',
+            database: process.env.DB_NAME ?? 'tcc_db',
       entities: [
         User,
         Reviews,
@@ -61,6 +62,8 @@ import { ConversasModule } from './conversas/conversas.module';
         Interesse,
         Conversa,
         Mensagem,
+        PedidoMedalhaBranca,
+        DocumentoMedalhaBranca,
       ],
       synchronize: true,
     }),
