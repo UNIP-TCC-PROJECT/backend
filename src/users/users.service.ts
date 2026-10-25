@@ -134,6 +134,7 @@ export class UsersService {
         'totalReviews',
         'status',
         'medalhaVerde',
+        'medalhaBranca',
       ],
     });
   }
@@ -165,6 +166,7 @@ export class UsersService {
         'totalReviews',
         'status',
         'medalhaVerde',
+        'medalhaBranca',
       ],
     });
 
