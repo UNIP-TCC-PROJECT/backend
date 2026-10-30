@@ -20,6 +20,14 @@ import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.
 import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
+// Nunca devolve hash de senha nem campos internos (segredos MFA, vínculo com o provedor, contadores de bloqueio).
+const INTERNAL_FIELDS = ['password', 'mfaSecret', 'asaasCustomerId', 'failedLoginAttempts', 'lockedUntil'] as const;
+export function sanitizeUser<T extends object>(user: T) {
+  const copy = { ...user } as Record<string, unknown>;
+  for (const f of INTERNAL_FIELDS) delete copy[f];
+  return copy as Omit<T, (typeof INTERNAL_FIELDS)[number]>;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -61,9 +69,7 @@ export class UsersService {
     });
 
     const savedUser = await this.repo.save(user);
-    const { password, ...result } = savedUser;
-
-    return result;
+    return sanitizeUser(savedUser);
   }
 
   async findById(id: number) {
@@ -75,8 +81,7 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const { password, ...result } = user;
-    return result;
+    return sanitizeUser(user);
   }
 
   async updateProfileImage(userId: number, profileImage: string) {
@@ -90,7 +95,7 @@ export class UsersService {
 
   async findAllUsers() {
     const users = await this.repo.find();
-    return users.map(({ password, ...rest }) => rest);
+    return users.map(sanitizeUser);
   }
 
   async findAllOngs() {
@@ -199,9 +204,7 @@ export class UsersService {
     }
 
     const updatedUser = await this.repo.save(user);
-    const { password, ...result } = updatedUser;
-
-    return result;
+    return sanitizeUser(updatedUser);
   }
 
   async updateOng(
@@ -226,12 +229,16 @@ export class UsersService {
       );
     }
 
+    // O CNPJ foi verificado no cadastro (e sustenta as medalhas): trocá-lo exige nova validação pela administração.
+    if (data?.cnpj !== undefined && String(data.cnpj).replace(/\D/g, '') !== String(ong.cnpj ?? '').replace(/\D/g, '')) {
+      throw new BadRequestException('O CNPJ não pode ser alterado. Solicite a alteração à administração da plataforma.');
+    }
+    delete data.cnpj;
+
     Object.assign(ong, data);
 
     const updatedOng = await this.repo.save(ong);
-    const { password, ...result } = updatedOng;
-
-    return result;
+    return sanitizeUser(updatedOng);
   }
 
   async createAdmin(data: CreateAdminDto) {
@@ -254,8 +261,6 @@ export class UsersService {
     });
 
     const savedAdmin = await this.repo.save(admin);
-    const { password, ...result } = savedAdmin;
-
-    return result;
+    return sanitizeUser(savedAdmin);
   }
 }

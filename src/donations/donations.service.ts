@@ -103,6 +103,8 @@ export class DonationsService {
    * Idempotente: repetir a chamada não duplica nada (a doação é uma linha, bloqueada na transação).
    */
   async reconcile(providerPaymentId: string, source: { kind: 'webhook' | 'sync' | 'admin'; eventId?: string; actor?: RequestUser }): Promise<{ outcome: ReconcileOutcome; donation?: Donation }> {
+    // Pagamento que não é nosso (outra integração/conta): ignora sem consultar o provedor.
+    if (!(await this.repo.existsBy({ providerPaymentId }))) return { outcome: 'IGNORED_UNKNOWN_PAYMENT' as const };
     const remote = await this.asaas.getPayment(providerPaymentId);
     return this.dataSource.transaction(async (m) => {
       const d = await m.findOne(Donation, { where: { providerPaymentId }, relations: { campaign: true }, lock: { mode: 'pessimistic_write', tables: ['donations'] } });

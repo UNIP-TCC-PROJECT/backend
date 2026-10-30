@@ -262,21 +262,28 @@ export class AccountabilityService implements OnModuleInit {
   }
 
   async reviewExpense(admin: RequestUser, id: string, dto: ReviewActionDto, ip?: string) {
-    const e = await this.expenses.findOneBy({ id });
-    if (!e) throw new NotFoundException(NOT_FOUND);
-    const status = await this.decide(admin, e, dto);
-    if (dto.action === 'APROVAR') {
-      // Só aprova com comprovante aprovado e dentro do saldo realmente arrecadado da campanha.
-      if (!(await this.expenseDocs.countBy({ expenseId: id, status: AccStatus.APROVADA }))) throw new BadRequestException('Aprove ao menos um comprovante antes de aprovar a despesa.');
-      const f = await this.financials(e.organizationId, e.campaignId);
-      if (e.amountCents > f.balanceCents) throw new BadRequestException(`Despesa (${e.amountCents}) excede o saldo arrecadado disponível da campanha (${f.balanceCents}), em centavos.`);
-    }
+    const first = await this.expenses.findOneBy({ id });
+    if (!first) throw new NotFoundException(NOT_FOUND);
+    if (needsReason(dto.action) && !dto.reason) throw new BadRequestException('Informe o motivo/a complementação solicitada.');
     const action = { INICIAR: 'EXPENSE_REVIEW_STARTED', APROVAR: 'EXPENSE_APPROVED', REPROVAR: 'EXPENSE_REJECTED', COMPLEMENTAR: 'EXPENSE_COMPLEMENT_REQUESTED' }[dto.action];
-    await this.dataSource.transaction(async (m) => {
+
+    return this.dataSource.transaction(async (m) => {
+      // Trava a campanha: aprovações concorrentes da mesma campanha passam uma de cada vez e
+      // cada uma enxerga o que a anterior já aprovou (evita aprovar mais do que o saldo arrecadado).
+      await m.findOne(Campaign, { where: { id: first.campaignId }, lock: { mode: 'pessimistic_write' } });
+      const e = await m.findOneByOrFail(Expense, { id });
+      const status = nextStatus(e.status, dto.action);
+      if (dto.action === 'APROVAR') {
+        if (!(await m.countBy(ExpenseDocument, { expenseId: id, status: AccStatus.APROVADA }))) throw new BadRequestException('Aprove ao menos um comprovante antes de aprovar a despesa.');
+        const raised = await m.createQueryBuilder(Donation, 'd').where('d.campaignId = :c AND d.status = :s', { c: e.campaignId, s: DonationStatus.CONFIRMADA }).select('COALESCE(SUM(d.amountCents), 0)', 'sum').getRawOne();
+        const spent = await m.createQueryBuilder(Expense, 'x').where('x.campaignId = :c AND x.status = :s', { c: e.campaignId, s: AccStatus.APROVADA }).select('COALESCE(SUM(x.amountCents), 0)', 'sum').getRawOne();
+        const balance = Number(raised.sum) - Number(spent.sum);
+        if (e.amountCents > balance) throw new BadRequestException(`Despesa (${e.amountCents}) excede o saldo arrecadado disponível da campanha (${balance}), em centavos.`);
+      }
       await m.update(Expense, id, { status, reviewedBy: admin.id, reviewedAt: new Date(), reviewReason: dto.reason ?? null });
       await this.audit.log({ actor: admin, action, entityType: 'expense', entityId: id, organizationId: e.organizationId, metadata: { reason: dto.reason ?? null, amountCents: e.amountCents }, ip }, m);
+      return { id, status };
     });
-    return { id, status };
   }
 
   async reviewExpenseDocument(admin: RequestUser, id: string, dto: ReviewActionDto, ip?: string) {

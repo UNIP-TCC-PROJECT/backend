@@ -30,6 +30,15 @@ export function prepareFile(file?: Express.Multer.File) {
   };
 }
 
+/** Detecta o formato real pelos bytes (nunca pelo MIME/extensão informados pelo cliente). */
+export function detectImage(b?: Buffer): { mime: string; ext: string } | null {
+  if (!b || b.length < 12) return null;
+  if (b.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return { mime: 'image/jpeg', ext: 'jpg' };
+  if (b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return { mime: 'image/png', ext: 'png' };
+  if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return { mime: 'image/webp', ext: 'webp' };
+  return null;
+}
+
 export function fileResponse(
   res: { set(h: Record<string, string>): unknown },
   f: { name: string; mime: string; content: Buffer },

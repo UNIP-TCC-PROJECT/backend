@@ -74,6 +74,8 @@ export class ExternalChecksService {
     if (res.status !== 200 || typeof res.data !== 'object') return unavailable(`BrasilAPI indisponível (HTTP ${res.status}).`, res.status);
 
     const d = res.data;
+    // A resposta precisa ser do CNPJ consultado; qualquer outra coisa é tratada como fonte indisponível/inconsistente.
+    if (onlyDigits(d.cnpj) !== org.cnpj) return unavailable('BrasilAPI devolveu dados de outro CNPJ ou em formato inesperado.', res.status);
     const findings: string[] = [];
     const eq = (a?: string | null, b?: string | null) => normalizeText(a) === normalizeText(b);
 

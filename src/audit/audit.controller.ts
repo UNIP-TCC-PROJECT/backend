@@ -12,6 +12,12 @@ import { AuditService } from './audit.service';
 export class AuditController {
   constructor(private audit: AuditService) {}
 
+  // Verificação de integridade da cadeia de hash.
+  @Get('verify')
+  verify() {
+    return this.audit.verify();
+  }
+
   @Get()
   list(
     @Query('entityType') entityType?: string,

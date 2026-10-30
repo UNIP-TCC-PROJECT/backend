@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Repository } from 'typeorm';
+import { detectImage } from '../common/file-upload';
 import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../common/request-context';
 import { DonationStatus } from '../donations/entities/donation.entity';
@@ -73,10 +74,9 @@ export class CampaignsService {
   async setImage(user: RequestUser, id: string, file: Express.Multer.File | undefined, ip?: string) {
     await this.orgs.approvedOfOwner(user.id);
     const c = await this.ownedBy(user.id, id);
-    const isJpg = file?.buffer?.subarray(0, 3).equals(Buffer.from([255, 216, 255]));
-    const isPng = file?.buffer?.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-    if (!file || !(isJpg || isPng) || file.size > 3 * 1024 * 1024) throw new BadRequestException('Envie uma imagem JPG ou PNG de até 3 MB.');
-    const name = `${randomUUID()}.${isJpg ? 'jpg' : 'png'}`;
+    const kind = detectImage(file?.buffer);
+    if (!file || !kind || kind.ext === 'webp' || file.size > 3 * 1024 * 1024) throw new BadRequestException('Envie uma imagem JPG ou PNG de até 3 MB.');
+    const name = `${randomUUID()}.${kind.ext}`;
     await mkdir(join(process.cwd(), 'uploads', 'campaigns'), { recursive: true });
     await writeFile(join(process.cwd(), 'uploads', 'campaigns', name), file.buffer);
     c.imageUrl = `/uploads/campaigns/${name}`;

@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 
 import { UserType } from '../entities/user.entity';
+import { IsStrongPassword } from '../../common/password';
 
 export class CreateUserDto {
   @IsString()
@@ -18,8 +19,7 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   password!: string;
 
   @IsEnum([UserType.ONG, UserType.DOADOR])

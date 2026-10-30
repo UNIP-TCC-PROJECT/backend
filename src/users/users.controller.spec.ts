@@ -6,6 +6,8 @@ import { BadRequestException } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from '../auth/auth.service';
 
+jest.mock('node:fs/promises', () => ({ mkdir: jest.fn(), writeFile: jest.fn() }));
+
 describe('UsersController', () => {
   let controller: UsersController;
 
@@ -41,15 +43,17 @@ describe('UsersController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('should save the avatar for the authenticated user', async () => {
-    const result = await controller.uploadAvatar(
-      { filename: 'avatar.png' } as Express.Multer.File,
-      { user: { id: 42 } },
-    );
-    expect(mockUsersService.updateProfileImage).toHaveBeenCalledWith(
-      42, '/uploads/avatars/avatar.png',
-    );
-    expect(result).toEqual({ profileImage: '/uploads/avatars/avatar.png' });
+  it('should save the avatar for the authenticated user (extensão definida pelos bytes, não pelo nome)', async () => {
+    const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(16)]);
+    const result = await controller.uploadAvatar({ buffer: png, originalname: 'x.html' } as Express.Multer.File, { user: { id: 42 } });
+    expect(result.profileImage).toMatch(/^\/uploads\/avatars\/[\w-]+\.png$/);
+    expect(mockUsersService.updateProfileImage).toHaveBeenCalledWith(42, result.profileImage);
+  });
+
+  it('should reject an avatar whose bytes are not an image', async () => {
+    mockUsersService.updateProfileImage.mockClear();
+    await expect(controller.uploadAvatar({ buffer: Buffer.from('<html><script>alert(1)</script></html>'), originalname: 'a.png' } as Express.Multer.File, { user: { id: 42 } })).rejects.toThrow(BadRequestException);
+    expect(mockUsersService.updateProfileImage).not.toHaveBeenCalled();
   });
 
   it('should reject an avatar request without a file', async () => {

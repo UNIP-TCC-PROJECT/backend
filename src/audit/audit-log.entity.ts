@@ -39,4 +39,12 @@ export class AuditLog {
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
+
+  // Encadeamento: hash = SHA-256(prevHash + conteúdo canônico). Ajuda a DETECTAR alterações/remoções no meio da
+  // trilha; não prova que o conteúdo original era verdadeiro (ver AuditService.verify).
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  prevHash!: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  hash!: string | null;
 }

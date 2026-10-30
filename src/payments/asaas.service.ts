@@ -45,19 +45,32 @@ export class AsaasService {
     return res.data as T;
   }
 
-  createCustomer(c: { name: string; cpfCnpj: string; email: string; externalReference: string }) {
-    return this.call<{ id: string }>('post', '/customers', { ...c, notificationDisabled: true });
+  /** Resposta fora do formato esperado = provedor com problema: nunca seguimos adiante "no escuro". */
+  private expect<T>(data: any, ok: boolean): T {
+    if (!ok) {
+      this.logger.warn('Asaas devolveu resposta em formato inesperado.');
+      throw new BadGatewayException('Provedor de pagamento indisponível. Tente novamente.');
+    }
+    return data as T;
   }
 
-  createPixPayment(p: { customer: string; value: number; dueDate: string; description: string; externalReference: string }) {
-    return this.call<AsaasPayment>('post', '/payments', { ...p, billingType: 'PIX' });
+  async createCustomer(c: { name: string; cpfCnpj: string; email: string; externalReference: string }) {
+    const d = await this.call<{ id: string }>('post', '/customers', { ...c, notificationDisabled: true });
+    return this.expect<{ id: string }>(d, typeof d?.id === 'string' && /^cus_\w+$/.test(d.id));
   }
 
-  getPayment(id: string) {
-    return this.call<AsaasPayment>('get', `/payments/${encodeURIComponent(id)}`);
+  async createPixPayment(p: { customer: string; value: number; dueDate: string; description: string; externalReference: string }) {
+    const d = await this.call<AsaasPayment>('post', '/payments', { ...p, billingType: 'PIX' });
+    return this.expect<AsaasPayment>(d, typeof d?.id === 'string' && /^pay_\w+$/.test(d.id) && typeof d.status === 'string');
   }
 
-  getPixQrCode(id: string) {
-    return this.call<{ encodedImage: string; payload: string; expirationDate: string }>('get', `/payments/${encodeURIComponent(id)}/pixQrCode`);
+  async getPayment(id: string) {
+    const d = await this.call<AsaasPayment>('get', `/payments/${encodeURIComponent(id)}`);
+    return this.expect<AsaasPayment>(d, typeof d?.id === 'string' && typeof d.status === 'string' && Number.isFinite(Number(d.value)));
+  }
+
+  async getPixQrCode(id: string) {
+    const d = await this.call<{ encodedImage: string; payload: string; expirationDate: string }>('get', `/payments/${encodeURIComponent(id)}/pixQrCode`);
+    return this.expect<typeof d>(d, typeof d?.payload === 'string' && d.payload.length > 10);
   }
 }
