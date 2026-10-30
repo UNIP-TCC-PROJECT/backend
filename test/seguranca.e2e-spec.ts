@@ -48,6 +48,7 @@ import { ConversasModule } from '../src/conversas/conversas.module';
 import { DenunciasModule } from '../src/denuncias/denuncias.module';
 import { PasswordResetModule } from '../src/password-reset/password-reset.module';
 import { MailService } from '../src/mail/mail.service';
+import { migrateSchema, migratorConn, runtimeOptions } from './helpers/db';
 
 jest.setTimeout(120000);
 process.env.JWT_SECRET = 'segredo-de-teste-seguranca-nao-usar-em-producao-0123456789';
@@ -57,7 +58,6 @@ process.env.ASAAS_WEBHOOK_TOKEN = WH;
 process.env.PORTAL_TRANSPARENCIA_API_KEY = 'chave-portal-teste';
 
 const schema = `teste_seguranca_${process.pid}_${Date.now()}`;
-const dbOptions = { type: 'postgres' as const, host: process.env.DB_HOST ?? 'localhost', port: Number(process.env.DB_PORT ?? 5432), username: process.env.DB_USER ?? 'postgres', password: process.env.DB_PASSWORD ?? 'postgres', database: process.env.DB_NAME ?? 'tcc_db' };
 const SENHA = 'Senha@12345';
 const CPF_TESTE = '52998224725'; // CPF de teste matematicamente válido, não pertence a ninguém
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF');
@@ -165,12 +165,12 @@ describe('Revisão de segurança', () => {
   let A: Awaited<ReturnType<typeof ongOf>>, B: Awaited<ReturnType<typeof ongOf>>, campA: string, campB: string;
 
   beforeAll(async () => {
-    bootstrap = await new DataSource(dbOptions).initialize();
-    await bootstrap.query(`CREATE SCHEMA "${schema}"`);
+    await migrateSchema(schema);
+    bootstrap = await migratorConn().initialize();
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
-        TypeOrmModule.forRoot({ ...dbOptions, schema, synchronize: true, autoLoadEntities: true }),
+        TypeOrmModule.forRoot({ ...runtimeOptions(schema), autoLoadEntities: true }),
         AuditModule, UsersModule, AdminModule, OrganizationsModule, CampaignsModule, DonationsModule, PaymentsModule, AccountabilityModule,
         MedalhasModule, MetasModule, PublicacoesModule, ReviewsModule, FavoritosModule, InteressesModule, ConversasModule, DenunciasModule, PasswordResetModule,
       ],
@@ -795,39 +795,66 @@ describe('Revisão de segurança', () => {
       for (const m of ['post', 'put', 'patch', 'delete'] as const) for (const t of [doadorTok, A.token, adminTok]) expect([403, 404, 405]).toContain((await (http() as any)[m]('/admin/audit-logs').set(a(t)).send({ action: 'x' })).status);
       for (const m of ['put', 'patch', 'delete'] as const) expect([403, 404, 405]).toContain((await (http() as any)[m]('/admin/audit-logs/1').set(a(adminTok)).send({})).status);
     });
-    it('AUD-03 imutabilidade no banco: UPDATE, DELETE e TRUNCATE são rejeitados (inclusive SQL direto da aplicação)', async () => {
+    it('AUD-03 imutabilidade no banco: UPDATE, DELETE e TRUNCATE são rejeitados (conexão da aplicação: sem permissão; dono do schema: gatilho)', async () => {
       const t = `"${schema}"."audit_logs"`;
-      await expect(db.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/imutável/);
-      await expect(db.query(`DELETE FROM ${t}`)).rejects.toThrow(/imutável/);
-      await expect(db.query(`TRUNCATE ${t}`)).rejects.toThrow(/imutável/);
+      // 1ª camada: o papel da aplicação nem tem o privilégio
+      await expect(db.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/permission denied/);
+      await expect(db.query(`DELETE FROM ${t}`)).rejects.toThrow(/permission denied/);
+      await expect(db.query(`TRUNCATE ${t}`)).rejects.toThrow(/permission denied/);
+      // 2ª camada: mesmo quem tem o privilégio (dono) esbarra no gatilho
+      await expect(bootstrap.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/imutável/);
+      await expect(bootstrap.query(`DELETE FROM ${t}`)).rejects.toThrow(/imutável/);
+      await expect(bootstrap.query(`TRUNCATE ${t}`)).rejects.toThrow(/imutável/);
+    });
+    it('AUD-06 a conexão da aplicação não consegue desligar, remover ou contornar a proteção da auditoria', async () => {
+      const t = `"${schema}"."audit_logs"`;
+      for (const sql of [
+        `ALTER TABLE ${t} DISABLE TRIGGER audit_logs_row_guard`,
+        `ALTER TABLE ${t} DISABLE TRIGGER ALL`,
+        `DROP TRIGGER audit_logs_row_guard ON ${t}`,
+        `DROP TABLE ${t}`,
+        `ALTER TABLE ${t} ADD COLUMN x int`,
+        `CREATE TRIGGER x BEFORE INSERT ON ${t} FOR EACH ROW EXECUTE FUNCTION audit_logs_imutavel()`,
+        `CREATE TABLE "${schema}".tabela_nova (id int)`,
+        `SET session_replication_role = replica`,
+      ]) await expect(db.query(sql)).rejects.toThrow(/permission denied|must be owner|must be superuser/);
+      // GRANT por quem não é dono só gera warning no Postgres (não erro): o que importa é que não tem efeito
+      await db.query(`GRANT UPDATE, DELETE, TRUNCATE ON ${t} TO PUBLIC`);
+      const [priv] = await bootstrap.query(`SELECT has_table_privilege('${process.env.DB_USER}', '${t}', 'UPDATE') u, has_table_privilege('${process.env.DB_USER}', '${t}', 'DELETE') d, has_table_privilege('${process.env.DB_USER}', '${t}', 'TRUNCATE') tr, has_table_privilege('${process.env.DB_USER}', '${t}', 'INSERT') i`);
+      expect(priv).toEqual({ u: false, d: false, tr: false, i: true });
+      // gatilho segue ativo e a gravação normal (INSERT/SELECT) continua funcionando
+      const [{ n }] = await bootstrap.query(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgrelid = '${t}'::regclass AND tgname IN ('audit_logs_row_guard','audit_logs_truncate_guard') AND tgenabled = 'O'`);
+      expect(n).toBe(2);
+      await expect(db.query(`SELECT count(*) FROM ${t}`)).resolves.toBeDefined();
     });
     it('AUD-04 cadeia de hash: verificação íntegra; detecta edição e remoção no meio; NÃO detecta truncamento do final (limitação documentada)', async () => {
       const t = `"${schema}"."audit_logs"`;
+      const owner = bootstrap; // atacante com acesso de DONO do schema (migrator): a conexão da aplicação não consegue isto (AUD-06)
       const v0 = await get('/admin/audit-logs/verify', adminTok).expect(200);
       expect(v0.body).toMatchObject({ ok: true, checked: expect.any(Number) }); expect(v0.body.checked).toBeGreaterThan(50);
-      // atacante com acesso direto ao banco (superusuário) desliga o gatilho e altera uma linha
-      const mid = (await db.query(`SELECT id FROM ${t} ORDER BY id OFFSET 20 LIMIT 1`))[0].id;
-      await db.query(`ALTER TABLE ${t} DISABLE TRIGGER audit_logs_row_guard`);
-      const original = (await db.query(`SELECT action FROM ${t} WHERE id = ${mid}`))[0].action;
-      await db.query(`UPDATE ${t} SET action = 'ADULTERADO' WHERE id = ${mid}`);
+      // atacante com acesso direto ao banco como dono/superusuário desliga o gatilho e altera uma linha
+      const mid = (await owner.query(`SELECT id FROM ${t} ORDER BY id OFFSET 20 LIMIT 1`))[0].id;
+      await owner.query(`ALTER TABLE ${t} DISABLE TRIGGER audit_logs_row_guard`);
+      const original = (await owner.query(`SELECT action FROM ${t} WHERE id = ${mid}`))[0].action;
+      await owner.query(`UPDATE ${t} SET action = 'ADULTERADO' WHERE id = ${mid}`);
       const v1 = await get('/admin/audit-logs/verify', adminTok).expect(200);
       expect(v1.body).toMatchObject({ ok: false, firstBadId: String(mid) });
-      await db.query(`UPDATE ${t} SET action = '${original}' WHERE id = ${mid}`);
+      await owner.query(`UPDATE ${t} SET action = '${original}' WHERE id = ${mid}`);
       expect((await get('/admin/audit-logs/verify', adminTok)).body.ok).toBe(true);
       // remoção de linha do meio
-      const row = (await db.query(`SELECT * FROM ${t} WHERE id = ${mid}`))[0];
-      await db.query(`DELETE FROM ${t} WHERE id = ${mid}`);
+      const row = (await owner.query(`SELECT * FROM ${t} WHERE id = ${mid}`))[0];
+      await owner.query(`DELETE FROM ${t} WHERE id = ${mid}`);
       const v2 = await get('/admin/audit-logs/verify', adminTok).expect(200); expect(v2.body.ok).toBe(false);
-      await db.query(`INSERT INTO ${t} (id, "actorId", "actorType", action, "entityType", "entityId", "organizationId", metadata, ip, "createdAt", "prevHash", hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id, row.actorId, row.actorType, row.action, row.entityType, row.entityId, row.organizationId, row.metadata, row.ip, row.createdAt, row.prevHash, row.hash]);
+      await owner.query(`INSERT INTO ${t} (id, "actorId", "actorType", action, "entityType", "entityId", "organizationId", metadata, ip, "createdAt", "prevHash", hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id, row.actorId, row.actorType, row.action, row.entityType, row.entityId, row.organizationId, row.metadata, row.ip, row.createdAt, row.prevHash, row.hash]);
       expect((await get('/admin/audit-logs/verify', adminTok)).body.ok).toBe(true);
       // limitação: remover as últimas linhas deixa a cadeia restante consistente
-      const last = (await db.query(`SELECT id FROM ${t} ORDER BY id DESC LIMIT 1`))[0].id;
-      const lastRow = (await db.query(`SELECT * FROM ${t} WHERE id = ${last}`))[0];
-      await db.query(`DELETE FROM ${t} WHERE id = ${last}`);
+      const last = (await owner.query(`SELECT id FROM ${t} ORDER BY id DESC LIMIT 1`))[0].id;
+      const lastRow = (await owner.query(`SELECT * FROM ${t} WHERE id = ${last}`))[0];
+      await owner.query(`DELETE FROM ${t} WHERE id = ${last}`);
       expect((await get('/admin/audit-logs/verify', adminTok)).body.ok).toBe(true); // não detecta: precisa de âncora externa do hash mais recente
-      await db.query(`INSERT INTO ${t} (id, "actorId", "actorType", action, "entityType", "entityId", "organizationId", metadata, ip, "createdAt", "prevHash", hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [lastRow.id, lastRow.actorId, lastRow.actorType, lastRow.action, lastRow.entityType, lastRow.entityId, lastRow.organizationId, lastRow.metadata, lastRow.ip, lastRow.createdAt, lastRow.prevHash, lastRow.hash]);
-      await db.query(`ALTER TABLE ${t} ENABLE TRIGGER audit_logs_row_guard`);
-      await expect(db.query(`UPDATE ${t} SET action = 'X'`)).rejects.toThrow(/imutável/);
+      await owner.query(`INSERT INTO ${t} (id, "actorId", "actorType", action, "entityType", "entityId", "organizationId", metadata, ip, "createdAt", "prevHash", hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [lastRow.id, lastRow.actorId, lastRow.actorType, lastRow.action, lastRow.entityType, lastRow.entityId, lastRow.organizationId, lastRow.metadata, lastRow.ip, lastRow.createdAt, lastRow.prevHash, lastRow.hash]);
+      await owner.query(`ALTER TABLE ${t} ENABLE TRIGGER audit_logs_row_guard`);
+      await expect(owner.query(`UPDATE ${t} SET action = 'X'`)).rejects.toThrow(/imutável/);
     });
     it('AUD-05 logs e eventos não guardam segredos (senhas, hashes, tokens, chaves, CPF)', async () => {
       const dump = JSON.stringify(await db.getRepository(AuditLog).find()) + JSON.stringify(await db.getRepository(PaymentEvent).find());

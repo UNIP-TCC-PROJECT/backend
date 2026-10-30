@@ -1,4 +1,4 @@
-
+# Nenhuma credencial padrão: todas as variáveis ${VAR:?} vêm do .env (copie de .env.example e gere senhas fortes).
 services:
   backend:
     build:
@@ -8,19 +8,19 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - postgres-db
+      postgres-db:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       NODE_ENV: development
       DB_HOST: postgres-db
       DB_PORT: "5432"
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: tcc_db
       APP_URL: http://localhost:3000
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "1000"
+    # Migrations antes de subir; a aplicação em si conecta com o papel sem DDL.
+    command: ["sh", "-c", "npm run migration:run && npm run start:dev"]
     volumes:
       - .:/app
       - /app/node_modules
@@ -31,13 +31,23 @@ services:
     image: postgres:15-alpine
     container_name: postgres-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: tcc_db
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:?defina POSTGRES_ADMIN_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?defina POSTGRES_ADMIN_PASSWORD no .env}
+      POSTGRES_DB: ${DB_NAME:?defina DB_NAME no .env}
+      DB_USER: ${DB_USER:?defina DB_USER no .env}
+      DB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?defina DB_MIGRATOR_USER no .env}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?defina DB_MIGRATOR_PASSWORD no .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432" # só o próprio computador; nunca exponha o Postgres em 0.0.0.0
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
 volumes:

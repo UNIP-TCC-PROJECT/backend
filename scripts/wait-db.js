@@ -1,12 +1,17 @@
+require('dotenv/config');
 const { Client } = require('pg');
 
 const config = {
-  host: 'localhost',
-  port: 5432,
-  user: 'postgres',
-  password: 'postgres',
-  database: 'tcc_db',
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT || 5432),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 };
+if (!config.user || !config.password || !config.database) {
+  console.error('Defina DB_USER, DB_PASSWORD e DB_NAME (sem valores padrão).');
+  process.exit(1);
+}
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

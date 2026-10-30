@@ -16,7 +16,7 @@ Referências: OWASP Top 10 (2021) e OWASP ASVS 4.0.3. Data da revisão: 2026-10-
 | Testes unitários | 79/79 |
 | Vulnerabilidades reais encontradas | **12** (3 altas, 7 médias, 2 baixas) + dependências |
 | Corrigidas | **12 de 12** + redução das dependências (ver §3 e §5) |
-| Riscos remanescentes relevantes | 18 (ver §5), incluindo 1 decisão de produto em aberto |
+| Riscos remanescentes relevantes | 16 (ver §5), incluindo 1 decisão de produto em aberto — R-04 e R-05 tratados na Etapa 1 (§9) |
 
 Como foi feito: aplicação real (Nest + PostgreSQL, schema temporário descartável), com a **mesma** configuração HTTP de produção
 (`src/app.setup.ts`). Asaas, BrasilAPI, Portal da Transparência etc. são **simulados** (sem rede e sem chaves reais).
@@ -78,7 +78,7 @@ Aprovação com fontes fora só ocorre por decisão humana de admin com justific
      Mitigação: ancorar periodicamente o `headHash` fora do banco (e-mail, serviço externo, armazenamento WORM).
   2. Um atacante que **recalcule a cadeia inteira** (tem o algoritmo e acesso de escrita) não é detectado sem âncora externa.
   3. Hash **detecta alteração posterior; não prova que o conteúdo original era verdadeiro** — um registro falso gravado corretamente continua falso.
-  4. O gatilho de imutabilidade pode ser desligado por um superusuário do banco (foi o que o teste fez). Hoje a aplicação conecta como `postgres`.
+  4. O gatilho de imutabilidade pode ser desligado por um superusuário ou pelo **dono do schema** (foi o que o teste AUD-04 fez, agora com a conexão `migrator`). **Desde a Etapa 1 a conexão da aplicação não consegue** (AUD-06) — ver §9.
   5. Registros anteriores à cadeia ficam sem hash e fora da verificação.
 
 ## 5. Riscos que ainda precisam de atenção
@@ -88,8 +88,8 @@ Aprovação com fontes fora só ocorre por decisão humana de admin com justific
 | R-01 | **Média — decisão de produto** | Página pública da ONG (legado) expõe **e-mail de login, telefone, WhatsApp e chave Pix** (`docs/evidencias/exposicao-publica-ongs.json`). O e-mail é identificador de login (spam/credential stuffing); a chave Pix incentiva doação **fora da plataforma**, sem registro nem transparência. **Não alterei:** o frontend usa esses campos de propósito. | Decidir: e-mail de contato separado do e-mail de login; remover/ocultar Pix público ou apontar para doação pela plataforma. |
 | R-02 | Média | **Dependências:** backend ainda com 2 *high* (`@nestjs/platform-express`/`multer`, DoS), que exigem salto de versão maior; frontend com 1 *high* (`follow-redirects`, indireta, só afeta uso em Node). Reduzi de 1 crítica+5 altas+2 médias (backend) e 5 altas (frontend). `yarn.lock` ficou desatualizado em relação ao `package-lock.json`. | Planejar upgrade maior do NestJS/multer com testes; padronizar o gerenciador (yarn ou npm); rodar `npm audit` no CI. |
 | R-03 | Média | Token e usuário ficam no **`localStorage`**: qualquer XSS futuro rouba a sessão (8 h). Hoje não há *sinks* conhecidos. | Cookie `httpOnly`+`SameSite` com proteção CSRF, ou tokens curtos com refresh rotativo. |
-| R-04 | Média | Aplicação usa o superusuário `postgres` com senha padrão (`docker-compose.yml`); gatilho da auditoria pode ser desligado; um comprometimento da aplicação = controle total do banco. | Papéis separados (migração × aplicação sem `ALTER`/`TRIGGER`; `INSERT`/`SELECT` apenas em `audit_logs`), segredos fora do repositório, senha forte. |
-| R-05 | Média | `synchronize: true` (sem migrations): mudança de entidade altera o banco em produção sem revisão. | Migrations versionadas; desligar `synchronize`. |
+| R-04 | ~~Média~~ **Mitigado (Etapa 1)** | _Ver §9._ Aplicação usava o superusuário `postgres` com senha padrão (`docker-compose.yml`); gatilho da auditoria pode ser desligado; um comprometimento da aplicação = controle total do banco. | Papéis separados (migração × aplicação sem `ALTER`/`TRIGGER`; `INSERT`/`SELECT` apenas em `audit_logs`), segredos fora do repositório, senha forte. |
+| R-05 | ~~Média~~ **Resolvido (Etapa 1)** | _Ver §9._ Havia `synchronize: true` (sem migrations): mudança de entidade altera o banco em produção sem revisão. | Migrations versionadas; desligar `synchronize`. |
 | R-06 | Média | Arquivos em `bytea` no Postgres, **sem antivírus**; PDFs não têm metadados/JS removidos (só JPG/PNG sanitizados). | Armazenamento privado (Supabase/S3) com URLs assinadas e varredura (ClamAV); PDFs só públicos com atesto do admin (já é regra). |
 | R-07 | Média | Proteção de beneficiários em evidências depende de **revisão humana** (rostos, documentos nas fotos); texto livre só tem máscara de CPF/e-mail/telefone por regex. | Treinar/checklist do analista; considerar borrar rostos; dupla aprovação para publicação. |
 | R-08 | Média | Limite de requisições **em memória e por IP**: com vários processos não é compartilhado; atrás de proxy sem `trust proxy` todos compartilham o IP (429 em massa) ou o limite é contornável. `sync` do doador consulta o Asaas sem limite próprio. | Armazenamento compartilhado (Redis), `trust proxy` correto, limites por rota/usuário. |
@@ -112,7 +112,7 @@ Aprovação com fontes fora só ocorre por decisão humana de admin com justific
 | A02 Falhas criptográficas | bcrypt (custo 12), JWT HS256 com segredo de 64 caracteres, MFA cifrado AES-256-GCM, comparação em tempo constante no webhook; sem TLS testado | Parcial (R-03, R-17) |
 | A03 Injeção | Consultas parametrizadas (TypeORM), validação com *whitelist*, APP-01/02, FILE-01..05 | Atendido nos testes |
 | A04 Design inseguro | Nada nasce aprovado; confirmação de pagamento só via consulta ao provedor; limites de saldo; falha fechada em integrações | Atendido; ver R-11 |
-| A05 Configuração insegura | CORS restrito, CSP, cabeçalhos, sem `x-powered-by`; `synchronize`, credenciais padrão do Docker | Parcial (R-04, R-05) |
+| A05 Configuração insegura | CORS restrito, CSP, cabeçalhos, sem `x-powered-by`; migrations sem `synchronize`; sem credenciais padrão no Docker; papéis de banco separados | Parcial (segredos reais, rede e TLS dependem da implantação) |
 | A06 Componentes vulneráveis | `npm audit` antes/depois salvo em evidências | Parcial (R-02) |
 | A07 Falhas de autenticação | Bloqueio de conta, 429 por IP, sessões revogáveis/expiráveis, reset de uso único, senha forte | Atendido; ver R-10, R-12, R-14 |
 | A08 Integridade de software/dados | Hash dos arquivos, cadeia de hash da auditoria, idempotência de eventos | Parcial (seção 4) |
@@ -126,8 +126,8 @@ só foram revisados em código, não testados em ambiente.
 ## 7. Recomendações finais (ordem sugerida)
 
 1. Decidir R-01 (contatos/Pix públicos) e implementar.
-2. Papéis de banco separados, segredos novos, remover `recuperacao-git-*` e credenciais padrão (R-04, R-15).
-3. Migrations e desligar `synchronize` (R-05).
+2. ~~Papéis de banco separados, credenciais padrão~~ (feito, Etapa 1); **pendente:** rotacionar segredos já usados e remover `recuperacao-git-*` (R-15).
+3. ~~Migrations e desligar `synchronize`~~ (feito, Etapa 1).
 4. Armazenamento privado com varredura de malware e URLs assinadas (R-06).
 5. Migrar sessão para cookie `httpOnly` com CSRF (R-03) e rate limit compartilhado (R-08).
 6. Upgrade planejado do NestJS/multer e rotina de `npm audit` no CI (R-02).
@@ -153,6 +153,49 @@ node node_modules/jest/bin/jest.js --config test/jest-seguranca.json --runInBand
 node node_modules/jest/bin/jest.js --config test/jest-plataforma.json --runInBand
 node node_modules/jest/bin/jest.js
 ```
+
+## 9. Estabilização — progresso por etapa
+
+Etapa de correção pedida após esta revisão. Regra: nenhuma funcionalidade nova; cada etapa registra o que mudou, o que foi **testado de verdade** e o que continua aberto.
+
+| Etapa | Situação |
+|---|---|
+| 1. Banco de dados | **Concluída** (abaixo) |
+| 2. Arquivos (Storage privado, URLs assinadas, antivírus) | Pendente |
+| 3. Autenticação (cookies httpOnly, CSRF) | Pendente |
+| 4. Riscos do legado | Pendente |
+| 5. Dependências | Pendente |
+| 6. Monitoramento / rate limit compartilhado | Pendente |
+| 7. Financeiro (estorno, saldo, conciliação) | Pendente |
+
+### Etapa 1 — Banco de dados
+
+**Feito**
+- **Migrations versionadas** (`src/database/migrations`): `Baseline` (schema das 26 tabelas) e `AuditImmutabilityAndRoles` (gatilhos + permissões), ambas com `down()`. CLI: `npm run migration:run|revert|show|generate` (usa o papel *migrator*).
+- **`synchronize` desligado** em `dbOptions()` (único ponto de configuração; também usado pelo `seed-ongs.ts`, que antes tinha `synchronize: true` e `postgres/postgres`). A aplicação **não sobe** sem `DB_USER`/`DB_PASSWORD`/`DB_NAME`.
+- **Papéis separados**: admin do Postgres, *migrator* (dono do schema, DDL) e *app* (runtime). O papel da aplicação tem DML nas tabelas comuns e **só `SELECT`/`INSERT` em `audit_logs`**; sem DDL, sem `TRIGGER`/`TRUNCATE`, sem criar extensões.
+- **Auditoria**: o gatilho agora é criado pela migration (dono), não mais pela aplicação. `AuditService` confere no start que os gatilhos existem e **falha fechado** se não existirem.
+- **Docker**: `postgres/postgres` removido; variáveis obrigatórias (`${VAR:?}`), porta do Postgres só em `127.0.0.1`, healthcheck, script de init que cria os papéis e **recusa** senhas curtas (<16), de exemplo ou iguais entre papéis. `.env.example` sem segredos reais; `wait-db.js` sem credenciais fixas.
+- **Runbook** de adoção de banco existente e reversão: `docs/MIGRATIONS.md` (+ `docker/postgres/adopt-existing.sql`).
+
+**Testes executados (PostgreSQL 15 real em container descartável, papéis criados pelo script de init real, dados fictícios)**
+
+| Suíte | Resultado |
+|---|---|
+| Unitários | 125/125 (inclui `dbOptions` sem credenciais padrão) |
+| Segurança (`seguranca.e2e-spec.ts`) | 61/61 — **agora a aplicação sob teste conecta com o papel restrito**; AUD-03 exige 2 camadas (sem permissão para o app; gatilho para o dono); **novo AUD-06**: a conexão da aplicação não consegue `DISABLE TRIGGER`, `DROP TRIGGER/TABLE`, `ALTER`, `CREATE`, `SET session_replication_role` nem conceder privilégios |
+| Plataforma + Medalha Branca + Migrations | 85/85 — **novo**: schema só por migrations sem deriva em relação às entidades, privilégios do papel de runtime, falha fechada sem gatilhos, `down()`/`up()` ida e volta |
+| Build backend | OK (`nest build`) |
+| Frontend | Não alterado nesta etapa; build não reexecutado |
+
+**Verificado de verdade:** criação de papéis pelo script de init; migrations aplicadas pela CLI; permissões negadas ao papel da aplicação em SQL direto; **adoção de banco existente** numa cópia só-schema (sem dados) do seu Postgres local criado pelo `synchronize` antigo: após os passos do runbook, `migration:generate` respondeu “No changes”.
+**Não verificado:** `docker compose up` completo com o container `backend` (só `docker compose config` e o Postgres isolado); migração com **dados** reais; ambiente de produção.
+
+**Riscos que permanecem (honestamente)**
+- Quem é **superusuário ou migrator** ainda altera a trilha; a cadeia de hash continua sem âncora externa (§4).
+- Seu `.env` local e o volume Docker atual **ainda usam as credenciais antigas** (`postgres/postgres`, porta 5432 exposta no container antigo). Nada foi alterado ali: é preciso criar novas senhas e seguir `docs/MIGRATIONS.md`. Considere as antigas comprometidas.
+- `JWT_SECRET` de exemplo era fraco; o `.env.example` agora pede um valor gerado. Rotacione o do seu `.env`.
+- O gerador do TypeORM grava `"public".` fixo; está documentado revisar migrations geradas.
 
 ## Apêndice — resultado de cada teste (gerado dos JSONs de execução)
 

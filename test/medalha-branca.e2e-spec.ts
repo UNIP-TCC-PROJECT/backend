@@ -1,3 +1,4 @@
+import { migrateSchema, migratorConn, runtimeOptions } from './helpers/db';
 import { Test } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -25,14 +26,6 @@ import { Session } from '../src/auth/entities/session.entity';
 describe('Medalha Branca — fluxo isolado no PostgreSQL', () => {
   jest.setTimeout(30000);
   const schema = `teste_medalha_${process.pid}_${Date.now()}`;
-  const options = {
-    type: 'postgres' as const,
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? 'postgres',
-    database: process.env.DB_NAME ?? 'tcc_db',
-  };
   let bootstrap: DataSource;
   let db: DataSource;
   let app: NestExpressApplication;
@@ -59,15 +52,13 @@ describe('Medalha Branca — fluxo isolado no PostgreSQL', () => {
       });
 
   beforeAll(async () => {
-    bootstrap = await new DataSource(options).initialize();
-    await bootstrap.query(`CREATE SCHEMA "${schema}"`);
+    await migrateSchema(schema);
+    bootstrap = await migratorConn().initialize();
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         TypeOrmModule.forRoot({
-          ...options,
-          schema,
-          synchronize: true,
+          ...runtimeOptions(schema),
           entities: [
             User,
             Medalha,

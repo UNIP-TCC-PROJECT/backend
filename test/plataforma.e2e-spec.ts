@@ -1,3 +1,4 @@
+import { migrateSchema, migratorConn, runtimeOptions } from './helpers/db';
 import { Test } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -41,14 +42,6 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
   jest.setTimeout(60000);
   process.env.JWT_SECRET ??= 'e2e-secret';
   const schema = `teste_plataforma_${process.pid}_${Date.now()}`;
-  const options = {
-    type: 'postgres' as const,
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    username: process.env.DB_USER ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? 'postgres',
-    database: process.env.DB_NAME ?? 'tcc_db',
-  };
   const SENHA = 'Senha@12345';
   let bootstrap: DataSource;
   let db: DataSource;
@@ -133,13 +126,13 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
   }
 
   beforeAll(async () => {
-    bootstrap = await new DataSource(options).initialize();
-    await bootstrap.query(`CREATE SCHEMA "${schema}"`);
+    await migrateSchema(schema);
+    bootstrap = await migratorConn().initialize();
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
         TypeOrmModule.forRoot({
-          ...options, schema, synchronize: true,
+          ...runtimeOptions(schema),
           entities: [User, Session, AuditLog, Organization, OrganizationDocument, OrganizationValidation, OrganizationExternalCheck, Campaign, Donation, PaymentEvent, Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Medalha, PedidoMedalhaBranca, DocumentoMedalhaBranca],
         }),
         AuditModule, UsersModule, OrganizationsModule, CampaignsModule, DonationsModule, PaymentsModule, AccountabilityModule, MedalhasModule,
@@ -792,9 +785,12 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
     it('é imutável: UPDATE, DELETE e TRUNCATE são rejeitados pelo banco', async () => {
       const repo = db.getRepository(AuditLog);
       const t = `"${schema}"."audit_logs"`;
-      await expect(db.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/imutável/);
-      await expect(db.query(`DELETE FROM ${t}`)).rejects.toThrow(/imutável/);
-      await expect(repo.clear()).rejects.toThrow(/imutável/);
+      // a conexão da aplicação não tem UPDATE/DELETE/TRUNCATE em audit_logs; o dono esbarra no gatilho
+      await expect(db.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/permission denied/);
+      await expect(db.query(`DELETE FROM ${t}`)).rejects.toThrow(/permission denied/);
+      await expect(repo.clear()).rejects.toThrow(/permission denied/);
+      await expect(bootstrap.query(`UPDATE ${t} SET action = 'ADULTERADO'`)).rejects.toThrow(/imutável/);
+      await expect(bootstrap.query(`DELETE FROM ${t}`)).rejects.toThrow(/imutável/);
     });
     it('não há rota HTTP de escrita sobre logs', async () => {
       await http().delete('/admin/audit-logs').auth(tokAdmin, { type: 'bearer' }).expect(404);

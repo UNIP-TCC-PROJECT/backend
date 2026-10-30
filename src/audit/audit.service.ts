@@ -42,27 +42,18 @@ export class AuditService implements OnModuleInit {
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
-  // Trilha append-only: o próprio banco rejeita UPDATE/DELETE/TRUNCATE, mesmo via SQL direto da aplicação.
+  // O gatilho de imutabilidade é criado por migration (dono do schema), não pela aplicação. Aqui só conferimos
+  // que ele existe: sem ele a trilha deixaria de ser append-only, então falhamos fechado em vez de subir assim.
   async onModuleInit() {
-    await this.dataSource.query(`
-      CREATE OR REPLACE FUNCTION audit_logs_imutavel() RETURNS trigger AS $$
-      BEGIN RAISE EXCEPTION 'audit_logs é imutável'; END; $$ LANGUAGE plpgsql`);
-    const table = this.repo.metadata.tablePath
-      .split('.')
-      .map((p) => `"${p}"`)
-      .join('.');
-    await this.dataSource.query(
-      `DROP TRIGGER IF EXISTS audit_logs_row_guard ON ${table}`,
+    const table = this.repo.metadata.tableName;
+    const rows: { tgname: string }[] = await this.dataSource.query(
+      `SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+       WHERE c.oid = to_regclass($1) AND NOT t.tgisinternal AND t.tgname IN ('audit_logs_row_guard','audit_logs_truncate_guard')`,
+      [this.repo.metadata.tablePath],
     );
-    await this.dataSource.query(`
-      CREATE TRIGGER audit_logs_row_guard BEFORE UPDATE OR DELETE ON ${table}
-      FOR EACH ROW EXECUTE FUNCTION audit_logs_imutavel()`);
-    await this.dataSource.query(
-      `DROP TRIGGER IF EXISTS audit_logs_truncate_guard ON ${table}`,
-    );
-    await this.dataSource.query(`
-      CREATE TRIGGER audit_logs_truncate_guard BEFORE TRUNCATE ON ${table}
-      FOR EACH STATEMENT EXECUTE FUNCTION audit_logs_imutavel()`);
+    if (rows.length !== 2) {
+      throw new Error(`Gatilhos de imutabilidade ausentes em ${table}: rode "npm run migration:run" antes de iniciar a aplicação.`);
+    }
   }
 
   /**
