@@ -10,6 +10,9 @@ import {
 
 import { UserType } from '../entities/user.entity';
 import { IsStrongPassword } from '../../common/password';
+import { ACCOUNT_TYPES, IsCpf, IsWebsite } from '../../common/br-validators';
+import { BANK_CODES } from '../../common/banks';
+import { IsIn, Matches, MaxLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -46,7 +49,7 @@ export class CreateUserDto {
   phone!: string;
 
   @IsOptional()
-  @IsString()
+  @IsWebsite()
   website?: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
@@ -62,6 +65,12 @@ export class CreateUserDto {
   @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
+  district!: string;
+
+  @ValidateIf((data) => data.type === UserType.ONG)
+  @IsString()
+  @IsNotEmpty()
   city!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
@@ -72,21 +81,26 @@ export class CreateUserDto {
   @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
   @IsNotEmpty()
+  @MaxLength(80)
   bank!: string;
+
+  // Banco escolhido na lista; se ausente, `bank` é texto livre ("Outro").
+  @IsOptional()
+  @IsIn(BANK_CODES, { message: 'Banco inválido.' })
+  bankCode?: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
-  @IsNotEmpty()
+  @Matches(/^\d{4}$/, { message: 'A agência deve ter 4 dígitos.' })
   agency!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
-  @IsNotEmpty()
+  @Matches(/^\d{1,12}-?[\dxX]$/, { message: 'Conta inválida: use apenas números e o dígito (até 13 caracteres).' })
   account!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
-  @IsString()
-  @IsNotEmpty()
+  @IsIn([...ACCOUNT_TYPES], { message: 'Tipo de conta inválido.' })
   accountType!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
@@ -100,12 +114,11 @@ export class CreateUserDto {
   legalName!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
-  @IsString()
-  @IsNotEmpty()
+  @IsCpf()
   legalCpf!: string;
 
   // Campos para Doador
   @IsOptional()
-  @IsString()
+  @IsCpf()
   cpf?: string;
 }

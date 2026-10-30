@@ -69,6 +69,9 @@ status!: UserStatus;
   @Column({ nullable: true })
   street?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  district?: string;
+
   @Column({ nullable: true })
   city?: string;
 
@@ -77,6 +80,10 @@ status!: UserStatus;
 
   @Column({ nullable: true })
   bank?: string;
+
+  // Código do banco (lista oficial); nulo quando o banco foi informado como "Outro".
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  bankCode?: string | null;
 
   @Column({ nullable: true })
   agency?: string;

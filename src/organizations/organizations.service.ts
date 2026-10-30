@@ -60,7 +60,7 @@ export class OrganizationsService implements OnModuleInit {
     if (await this.orgs.existsBy({ cnpj })) throw new ConflictException('CNPJ já vinculado a outra organização.');
 
     const org = await this.orgs.save(
-      this.orgs.create({ ownerId: userId, cnpj, legalName: user.legalName ?? user.name, tradeName: user.name, description: user.description ?? null, email: user.email, phone: onlyDigits(user.phone) || null, zip: onlyDigits(user.zip) || null, street: user.street ?? null, city: user.city ?? null, state: user.state?.slice(0, 2).toUpperCase() ?? null }),
+      this.orgs.create({ ownerId: userId, cnpj, legalName: user.legalName ?? user.name, tradeName: user.name, description: user.description ?? null, email: user.email, phone: onlyDigits(user.phone) || null, zip: onlyDigits(user.zip) || null, street: user.street ?? null, district: user.district ?? null, city: user.city ?? null, state: user.state?.slice(0, 2).toUpperCase() ?? null }),
     );
     await this.audit.log({ actor: { id: userId, type: user.type }, action: 'ORG_CREATED', entityType: 'organization', entityId: org.id, organizationId: org.id, ip });
     return org;

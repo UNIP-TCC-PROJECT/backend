@@ -17,6 +17,8 @@ import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
+import { BANKS } from '../common/banks';
+import { normalizeWebsite } from '../common/br-validators';
 import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
@@ -63,6 +65,9 @@ export class UsersService {
 
     const user = this.repo.create({
       ...data,
+      website: normalizeWebsite(data.website),
+      // Banco da lista: o nome oficial vem do servidor, não do cliente.
+      ...(data.bankCode ? { bank: BANKS[data.bankCode] } : { bankCode: null }),
       password: hashedPassword,
       status: UserStatus.ATIVO,
       medalhaVerde,
