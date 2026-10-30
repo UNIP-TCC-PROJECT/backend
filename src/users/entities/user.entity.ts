@@ -118,6 +118,9 @@ status!: UserStatus;
   @Column({ nullable: true })
   category?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  asaasCustomerId?: string | null;
+
   @Column({ type: 'int', default: 0 })
   failedLoginAttempts!: number;
 

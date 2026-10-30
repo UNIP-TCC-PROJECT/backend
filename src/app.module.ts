@@ -55,6 +55,8 @@ import { Campaign } from './campaigns/entities/campaign.entity';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { Donation } from './donations/entities/donation.entity';
 import { DonationsModule } from './donations/donations.module';
+import { PaymentEvent } from './payments/payment-event.entity';
+import { PaymentsModule } from './payments/payments.module';
 import { Expense, ExpenseDocument } from './accountability/entities/expense.entity';
 import { DeliveryRecord, DeliveryEvidence } from './accountability/entities/delivery.entity';
 import { AccountabilityModule } from './accountability/accountability.module';
@@ -98,6 +100,7 @@ import { AppService } from './app.service';
         OrganizationExternalCheck,
         Campaign,
         Donation,
+        PaymentEvent,
         Expense,
         ExpenseDocument,
         DeliveryRecord,
@@ -122,6 +125,7 @@ import { AppService } from './app.service';
     OrganizationsModule,
     CampaignsModule,
     DonationsModule,
+    PaymentsModule,
     AccountabilityModule,
   ],
 

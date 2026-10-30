@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OngGuard } from '../auth/ong.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -48,6 +50,12 @@ export class MyCampaignsController {
   @Patch(':id')
   update(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCampaignDto) {
     return this.svc.update(actorOf(req), id, dto, req.ip);
+  }
+
+  @Post(':id/image')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 3 * 1024 * 1024, files: 1, fields: 0 } }))
+  image(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.svc.setImage(actorOf(req), id, file, req.ip);
   }
 
   @Post(':id/status')

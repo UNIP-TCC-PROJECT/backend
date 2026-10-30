@@ -7,10 +7,12 @@ export enum DonationStatus {
   PENDENTE = 'PENDENTE',
   CONFIRMADA = 'CONFIRMADA',
   CANCELADA = 'CANCELADA',
+  ESTORNADA = 'ESTORNADA',
 }
 
 @Entity('donations')
 @Index(['campaignId', 'status'])
+@Index(['donorId', 'idempotencyKey'], { unique: true })
 export class Donation {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -38,6 +40,29 @@ export class Donation {
 
   @Column({ type: 'timestamptz', nullable: true })
   confirmedAt!: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  refundedAt!: Date | null;
+
+  @Column({ type: 'varchar', default: 'ASAAS' })
+  provider!: string;
+
+  // Id da cobrança no Asaas (pay_...). Único: uma cobrança nunca vira duas doações.
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  providerPaymentId!: string | null;
+
+  // Chave enviada pelo cliente para que repetir o POST não gere nova cobrança.
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  idempotencyKey!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  pixPayload!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pixExpiresAt!: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  failureReason!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

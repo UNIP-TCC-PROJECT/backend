@@ -28,8 +28,17 @@ export class Campaign {
   @Column({ type: 'text' })
   description!: string;
 
+  @Column({ type: 'text', nullable: true })
+  objective!: string | null;
+
   @Column({ type: 'bigint', transformer: bigintTransformer })
   goalCents!: number;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  imageUrl!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  startsAt!: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   endsAt!: Date | null;
