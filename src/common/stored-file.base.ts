@@ -39,6 +39,6 @@ export abstract class StoredFile {
   @Column({ type: 'text', nullable: true })
   reviewReason!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

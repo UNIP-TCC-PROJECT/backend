@@ -64,6 +64,6 @@ export class Donation {
   @Column({ type: 'text', nullable: true })
   failureReason!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

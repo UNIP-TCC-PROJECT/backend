@@ -63,7 +63,7 @@ export class DeliveryRecord {
   @Column({ type: 'int' })
   registeredBy!: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }
 

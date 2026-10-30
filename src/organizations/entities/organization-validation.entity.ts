@@ -27,6 +27,6 @@ export class OrganizationValidation {
   @Column({ type: 'int', nullable: true })
   reviewedBy!: number | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

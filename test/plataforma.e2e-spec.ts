@@ -685,6 +685,65 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
         expect((await adm('get', `/admin/evidences/${ev3}`)).body.status).toBe('ENVIADA');
         await review(`/admin/evidences/${ev3}/review`, { action: 'REPROVAR' }).expect(400); // motivo obrigatório
       });
+      it('perfil público (ONG validada pelo fluxo): identificação, fontes consultadas com data e documentos sem conteúdo', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgB}`).expect(200)).body;
+        expect(p.identification).toMatchObject({ cnpj: '45723174000110', provenance: ['DECLARADA'] });
+        expect(p.identification.registeredAt).toBeDefined();
+        expect(p.validation).toMatchObject({ status: 'APROVADA' });
+        expect(p.validation.validatedAt).toBeDefined();
+        expect(p.validation.lastCheckedAt).not.toBeNull();
+        expect(p.validation.sources.map((x: any) => x.source).sort()).toEqual(['BRASILAPI', 'MAPA_OSC', 'PORTAL_TRANSPARENCIA', 'TRANSFEREGOV']);
+        for (const src of p.validation.sources) expect(src).toMatchObject({ queriedAt: expect.any(String), label: expect.any(String), provenance: ['FONTE_EXTERNA'] });
+        expect(p.validation.sources.find((x: any) => x.source === 'MAPA_OSC').resultLabel).toMatch(/neutra/);
+        expect(p.validation.receita).toMatchObject({ situacaoCadastral: 'ATIVA', provenance: ['FONTE_EXTERNA'] });
+        expect(p.validation.documents).toHaveLength(4);
+        expect(p.validation.documents[0]).toMatchObject({ state: 'ANALISADO_APROVADO', provenance: ['DOCUMENTO_ANALISADO'] });
+        expect(+new Date(p.validation.documents[0].receivedAt)).toBeLessThanOrEqual(+new Date(p.validation.documents[0].analyzedAt)); // fuso consistente
+        expect(p.audit.documentsReviewed).toBeGreaterThanOrEqual(4);
+        expect(p.timeline.map((t: any) => t.type)).toContain('ORG_VALIDATED');
+        const raw = JSON.stringify(p);
+        // nada de conteúdo bruto das consultas, arquivos, e-mails, CPFs ou selos/notas inventados
+        expect(raw).not.toMatch(/findings|sha256|legalRep|email|phone|52998224725/i);
+        expect(raw).not.toMatch(/"(score|rating|trust|seal|selo|nota)\w*":/i); // nenhum selo/nota/percentual de confiança
+        expect(Object.keys(p.legend).sort()).toEqual(['AUDITORIA', 'DECLARADA', 'DOCUMENTO_ANALISADO', 'DOCUMENTO_RECEBIDO', 'EVIDENCIA_APROVADA', 'FONTE_EXTERNA']);
+      });
+      it('perfil público sem consultas externas registradas mostra vazio honesto, sem inventar fontes', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        expect(p.validation.sources).toEqual([]);
+        expect(p.validation.lastCheckedAt).toBeNull();
+        expect(p.validation.receita).toBeNull();
+      });
+      it('financeiro por campanha: só pagamentos confirmados, percentual calculado e histórico de despesas aprovadas', async () => {
+        const c = (await http().get(`/transparency/organizations/${orgP}`)).body.campaigns.find((x: any) => x.id === campP);
+        expect(c).toMatchObject({ goalCents: 500000, totalRaisedCents: 5500, approvedExpensesCents: 4000, balanceCents: 1500, percentReached: 1.1 });
+        expect(c.expenses.map((e: any) => e.id)).toEqual([exp1]); // exp2 ainda pendente: fora do histórico
+        const pend = await db.getRepository(Donation).countBy({ campaignId: campP, status: 'PENDENTE' as any });
+        expect(pend).toBeGreaterThan(0); // há doações pendentes e elas não entram no arrecadado
+      });
+      it('galeria: apenas aprovadas e publicáveis, com campanha/tipo/situação; pendentes só como contagem', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        expect(p.gallery.map((g: any) => g.id)).toEqual([ev1]);
+        expect(p.gallery[0]).toMatchObject({ kind: 'FOTO_ENTREGA', status: 'APROVADA', campaignTitle: 'Campanha Pix', deliveryId: delivery, provenance: ['EVIDENCIA_APROVADA'] });
+        expect(p.evidenceSummary).toMatchObject({ published: 1, approvedNotPublished: 1, awaitingAnalysis: 1 });
+      });
+      it('entregas públicas trazem compra associada e procedência; sem evidência aprovada ficam só na contagem', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        expect(p.deliveries[0]).toMatchObject({ purchase: { amountCents: 4000 }, provenance: ['DECLARADA', 'EVIDENCIA_APROVADA'] });
+        expect(p.deliveries[0].evidences).toHaveLength(1);
+        expect(p.deliveriesAwaitingVerification).toBe(0);
+      });
+      it('linha do tempo: eventos reais, ordenados, com procedência; doações agregadas sem identificar doador', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        const types = p.timeline.map((t: any) => t.type);
+        for (const t of ['CAMPAIGN_PUBLISHED', 'DONATIONS_RECEIVED', 'PURCHASE_REGISTERED', 'EXPENSE_SUBMITTED', 'EXPENSE_APPROVED', 'PRODUCTS_ACQUIRED', 'DELIVERY_REGISTERED', 'EVIDENCE_APPROVED']) expect(types).toContain(t);
+        const times = p.timeline.map((t: any) => +new Date(t.at));
+        expect(times).toEqual([...times].sort((a, b) => b - a));
+        for (const ev of p.timeline) expect(ev.provenance.length).toBeGreaterThan(0);
+        const don = p.timeline.find((t: any) => t.type === 'DONATIONS_RECEIVED');
+        expect(JSON.stringify(don)).not.toMatch(/donor|doador|email|cpf/i);
+        expect(p.timeline.find((t: any) => t.type === 'EXPENSE_APPROVED').provenance).toContain('AUDITORIA');
+        expect(p.timeline.find((t: any) => t.type === 'DONATIONS_RECEIVED').provenance).toEqual(['FONTE_EXTERNA']);
+      });
       it('isolamento: outra ONG não vê despesas/evidências; ONG suspensa some do perfil público', async () => {
         expect((await ong('get', '/my/expenses', tokB)).body).toEqual([]);
         expect((await ong('get', '/my/evidences', tokB)).body).toEqual([]);

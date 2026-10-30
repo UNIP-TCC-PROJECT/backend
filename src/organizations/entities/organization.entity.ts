@@ -72,9 +72,9 @@ export class Organization {
   @Column({ type: 'timestamptz', nullable: true })
   reviewedAt!: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }
