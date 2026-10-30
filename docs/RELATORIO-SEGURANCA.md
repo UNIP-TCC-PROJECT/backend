@@ -189,7 +189,8 @@ Etapa de correção pedida após esta revisão. Regra: nenhuma funcionalidade no
 | Frontend | Não alterado nesta etapa; build não reexecutado |
 
 **Verificado de verdade:** criação de papéis pelo script de init; migrations aplicadas pela CLI; permissões negadas ao papel da aplicação em SQL direto; **adoção de banco existente** numa cópia só-schema (sem dados) do seu Postgres local criado pelo `synchronize` antigo: após os passos do runbook, `migration:generate` respondeu “No changes”.
-**Não verificado:** `docker compose up` completo com o container `backend` (só `docker compose config` e o Postgres isolado); migração com **dados** reais; ambiente de produção.
+**Verificado também no banco local real do projeto** (volume antigo, 8 usuários, backup `pg_dump` feito antes): papéis criados, posse adotada, Baseline registrada, `migration:run`, sem deriva, e o container `backend` do `docker compose` subiu com o papel restrito (HTTP 200). Senha padrão do `postgres` rotacionada.
+**Não verificado:** produção; migração de volume grande; rollback executado de fato num banco com dados.
 
 **Riscos que permanecem (honestamente)**
 - Quem é **superusuário ou migrator** ainda altera a trilha; a cadeia de hash continua sem âncora externa (§4).

@@ -64,3 +64,5 @@ uploads/
 
 # Dependências
 node_modules/
+# Backups locais do banco
+backups/

@@ -47,6 +47,17 @@ Nada é alterado automaticamente. Plano:
 `migration:generate` respondeu "No changes" (sem deriva entre o banco adotado e as entidades). Em outro ambiente, repita essa
 conferência numa cópia antes de aplicar: se `migration:generate` gerar SQL, há deriva a resolver antes do passo 3.
 
+### Sintoma comum: `password authentication failed for user "tcc_migrator"` / `role "tcc_admin" does not exist`
+O volume antigo já existia, então o script de init **não rodou** (ele só roda em volume vazio) e os papéis não existem.
+Faça o passo a passo acima (backup → `01-roles.sh` → `adopt-existing.sql` → registrar Baseline → `migration:run`). Com o volume antigo,
+execute o `01-roles.sh` com `POSTGRES_USER=postgres` (superusuário original) e depois crie o admin do compose e troque a senha do antigo:
+```
+CREATE ROLE <POSTGRES_ADMIN_USER> LOGIN SUPERUSER PASSWORD '<POSTGRES_ADMIN_PASSWORD>';
+ALTER ROLE postgres PASSWORD '<valor aleatório>';   -- tira a senha padrão
+```
+Esse caminho foi executado de verdade no banco local do projeto (8 usuários preservados, sem deriva, `docker compose` subindo o backend com o papel restrito).
+O atalho que apaga tudo é `docker compose down -v` (**perde os dados**).
+
 ## Reversão
 - `migration:revert` desfaz a última migration. `AuditImmutabilityAndRoles.down()` remove gatilhos e revoga os grants (**tira a imutabilidade — só em manutenção controlada**).
 - `Baseline.down()` **apaga todas as tabelas**: só em ambiente descartável. Em produção, a reversão é restaurar o backup do passo 1.
