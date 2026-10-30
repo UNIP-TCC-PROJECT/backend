@@ -78,7 +78,7 @@ describe('Isolamento entre ONGs', () => {
   it('ONG não aprovada não cria campanha nem despesas (approvedOfOwner)', async () => {
     const usersRepo = {} as any;
     const orgRepo = { findOneBy: jest.fn(async () => ({ id: 'org-C', status: OrganizationStatus.REPROVADA })) } as any;
-    const real = new OrganizationsService(orgRepo, {} as any, {} as any, usersRepo, {} as any, audit);
+    const real = new OrganizationsService(orgRepo, {} as any, {} as any, usersRepo, {} as any, audit, {} as any);
     await expect(real.approvedOfOwner(3)).rejects.toThrow(ForbiddenException);
   });
 });

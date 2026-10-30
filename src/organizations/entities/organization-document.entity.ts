@@ -5,10 +5,20 @@ import { Organization } from './organization.entity';
 export enum OrganizationDocumentType {
   ESTATUTO = 'ESTATUTO',
   ATA_DIRETORIA = 'ATA_DIRETORIA',
+  COMPROVANTE_ENDERECO = 'COMPROVANTE_ENDERECO',
+  DOC_REPRESENTANTE = 'DOC_REPRESENTANTE',
   CARTAO_CNPJ = 'CARTAO_CNPJ',
   CERTIDAO = 'CERTIDAO',
   OUTRO = 'OUTRO',
 }
+
+// Obrigatórios para solicitar a análise; os demais tipos servem para complementação.
+export const REQUIRED_DOCUMENT_TYPES = [
+  OrganizationDocumentType.ESTATUTO,
+  OrganizationDocumentType.ATA_DIRETORIA,
+  OrganizationDocumentType.COMPROVANTE_ENDERECO,
+  OrganizationDocumentType.DOC_REPRESENTANTE,
+];
 
 @Entity('organization_documents')
 @Index(['organizationId', 'type'])

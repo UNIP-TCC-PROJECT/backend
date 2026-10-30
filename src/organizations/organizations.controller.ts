@@ -8,8 +8,23 @@ import { fileResponse, singleFileUpload } from '../common/file-upload';
 import { actorOf } from '../common/request-context';
 import { UserType } from '../users/entities/user.entity';
 import { OrganizationStatus } from './entities/organization.entity';
-import { ReasonDto, ReviewDto, UpdateOrganizationDto, UploadDocumentDto } from './organizations.dto';
+import { ReasonDto, RequestDocumentsDto, ReviewDto, UpdateOrganizationDto, UploadDocumentDto } from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
+
+@Controller('organizations/public')
+export class PublicOrganizationsController {
+  constructor(private svc: OrganizationsService) {}
+
+  @Get()
+  list() {
+    return this.svc.listPublic();
+  }
+
+  @Get(':id')
+  get(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getPublic(id);
+  }
+}
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -19,7 +34,7 @@ export class OrganizationsController {
   @Get('me')
   @Roles(UserType.ONG)
   me(@Req() req: any) {
-    return this.svc.ofOwner(req.user.id, req.ip);
+    return this.svc.checksStatus(req.user.id);
   }
 
   @Patch('me')
@@ -79,6 +94,16 @@ export class AdminOrganizationsController {
   @Post(':id/suspend')
   suspend(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
     return this.svc.suspend(actorOf(req), id, dto.reason, req.ip);
+  }
+
+  @Post(':id/request-documents')
+  requestDocuments(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequestDocumentsDto) {
+    return this.svc.requestDocuments(actorOf(req), id, dto, req.ip);
+  }
+
+  @Post(':id/checks/run')
+  runChecks(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.rerunChecks(actorOf(req), id, req.ip);
   }
 
   @Post('documents/:docId/review')

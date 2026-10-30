@@ -8,6 +8,7 @@ import bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import request from 'supertest';
+import axios from 'axios';
 import { AccountabilityModule } from '../src/accountability/accountability.module';
 import { DeliveryEvidence, DeliveryRecord } from '../src/accountability/entities/delivery.entity';
 import { Expense, ExpenseDocument } from '../src/accountability/entities/expense.entity';
@@ -20,6 +21,7 @@ import { Campaign } from '../src/campaigns/entities/campaign.entity';
 import { DonationsModule } from '../src/donations/donations.module';
 import { Donation } from '../src/donations/entities/donation.entity';
 import { OrganizationDocument } from '../src/organizations/entities/organization-document.entity';
+import { OrganizationExternalCheck } from '../src/organizations/entities/organization-external-check.entity';
 import { OrganizationValidation } from '../src/organizations/entities/organization-validation.entity';
 import { Organization } from '../src/organizations/entities/organization.entity';
 import { OrganizationsModule } from '../src/organizations/organizations.module';
@@ -50,6 +52,39 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
   const http = () => request(app.getHttpServer());
   const login = (email: string, otp?: string) => http().post('/users/login').send({ email, password: SENHA, otp });
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF');
+  // Fontes externas simuladas (o teste não depende de rede). brasil: 'ok' | 'down' | 'divergente'.
+  let brasil: 'ok' | 'down' | 'divergente' = 'ok';
+  let portalAlerta = false;
+  const receita = (cnpj: string, razao: string) => ({ cnpj, razao_social: razao, nome_fantasia: razao, situacao_cadastral: 2, descricao_situacao_cadastral: 'ATIVA', natureza_juridica: 'Associação Privada', cnae_fiscal: 9430800, cnaes_secundarios: [], cep: '01310100', uf: 'SP', municipio: 'SAO PAULO' });
+  beforeEach(() => {
+    jest.spyOn(axios, 'get').mockImplementation(async (url: string, cfg?: any) => {
+      const res = (status: number, data: any) => ({ status, data }) as any;
+      if (url.includes('brasilapi')) {
+        if (brasil === 'down') return res(503, 'down');
+        const cnpj = url.split('/').pop()!;
+        return res(200, receita(cnpj, brasil === 'divergente' ? 'OUTRA EMPRESA LTDA' : `ONG ${cnpj}`));
+      }
+      if (url.includes('mapaosc')) return res(404, '<html>');
+      if (url.includes('portaldatransparencia')) return res(200, portalAlerta && url.endsWith('/ceis') ? [{ id: 1 }] : []);
+      if (url.includes('transferegov')) return res(200, { data: [], total_items: 0 });
+      throw new Error(`URL externa inesperada: ${url}`);
+    });
+    process.env.PORTAL_TRANSPARENCIA_API_KEY = 'chave-teste';
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const dados = (cnpj: string) => ({ legalName: `ONG ${cnpj}`, tradeName: `ONG ${cnpj}`, description: 'Atendimento a famílias em vulnerabilidade social.', email: 'contato@ong.org', phone: '(11) 3333-4444', zip: '01310-100', street: 'Av. Paulista', number: '1000', district: 'Bela Vista', city: 'São Paulo', state: 'sp', legalRepName: 'Maria da Silva', legalRepCpf: '529.982.247-25', legalRepRole: 'Presidente', legalRepEmail: 'maria@ong.org', legalRepPhone: '11999998888' });
+  const TIPOS = ['ESTATUTO', 'ATA_DIRETORIA', 'COMPROVANTE_ENDERECO', 'DOC_REPRESENTANTE'];
+  const enviarTudo = async (tok: string, cnpj: string) => {
+    await http().patch('/organizations/me').auth(tok, { type: 'bearer' }).send(dados(cnpj)).expect(200);
+    for (const t of TIPOS) await http().post('/organizations/me/documents').auth(tok, { type: 'bearer' }).field('type', t).attach('file', pdf, { filename: `${t}.pdf`, contentType: 'application/pdf' }).expect(201);
+  };
+  const aprovar = async (org: string, body: any = { decision: 'APROVAR' }) => {
+    for (const d of (await http().get(`/admin/organizations/${org}`).auth(tokAdmin, { type: 'bearer' })).body.documents.filter((x: any) => x.status === 'PENDENTE' && !x.supersededAt)) {
+      await http().post(`/admin/organizations/documents/${d.id}/review`).auth(tokAdmin, { type: 'bearer' }).send({ decision: 'APROVAR' }).expect(201);
+    }
+    return http().post(`/admin/organizations/${org}/decision`).auth(tokAdmin, { type: 'bearer' }).send(body);
+  };
   let tokA: string, tokB: string, tokDoador: string, tokAdmin: string;
   let orgA: string, orgB: string, campA: string, expA: string, docA: string;
 
@@ -67,7 +102,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
         ConfigModule.forRoot({ isGlobal: true }),
         TypeOrmModule.forRoot({
           ...options, schema, synchronize: true,
-          entities: [User, Session, AuditLog, Organization, OrganizationDocument, OrganizationValidation, Campaign, Donation, Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Medalha, PedidoMedalhaBranca, DocumentoMedalhaBranca],
+          entities: [User, Session, AuditLog, Organization, OrganizationDocument, OrganizationValidation, OrganizationExternalCheck, Campaign, Donation, Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Medalha, PedidoMedalhaBranca, DocumentoMedalhaBranca],
         }),
         AuditModule, UsersModule, OrganizationsModule, CampaignsModule, DonationsModule, AccountabilityModule, MedalhasModule,
       ],
@@ -147,22 +182,108 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       await http().post('/organizations/me/documents').auth(tokA, { type: 'bearer' }).field('type', 'ESTATUTO')
         .attach('file', Buffer.from('MZ-executavel'), { filename: 'x.pdf', contentType: 'application/pdf' }).expect(400);
     });
-    it('envia documentos, solicita análise e admin aprova', async () => {
-      for (const t of [tokA, tokB]) {
-        await http().post('/organizations/me/documents').auth(t, { type: 'bearer' }).field('type', 'ESTATUTO').attach('file', pdf, { filename: 'estatuto.pdf', contentType: 'application/pdf' }).expect(201);
+    it('envia cadastro e documentos, passa pelas consultas e admin aprova (com justificativa só quando há bloqueio)', async () => {
+      for (const [t, c] of [[tokA, '11222333000181'], [tokB, '45723174000110']] as const) {
+        await enviarTudo(t, c);
         await http().post('/organizations/me/submit').auth(t, { type: 'bearer' }).expect(201);
       }
-      const docs = (await http().get(`/admin/organizations/${orgA}`).auth(tokAdmin, { type: 'bearer' })).body.documents;
-      docA = docs[0].id;
-      await http().post(`/admin/organizations/${orgA}/decision`).auth(tokAdmin, { type: 'bearer' }).send({ decision: 'APROVAR' }).expect(400); // documento ainda pendente
-      for (const org of [orgA, orgB]) {
-        const d = (await http().get(`/admin/organizations/${org}`).auth(tokAdmin, { type: 'bearer' })).body.documents[0];
-        await http().post(`/admin/organizations/documents/${d.id}/review`).auth(tokAdmin, { type: 'bearer' }).send({ decision: 'APROVAR' }).expect(201);
-        await http().post(`/admin/organizations/${org}/decision`).auth(tokAdmin, { type: 'bearer' }).send({ decision: 'APROVAR' }).expect(201);
-      }
+      docA = (await http().get(`/admin/organizations/${orgA}`).auth(tokAdmin, { type: 'bearer' })).body.documents[0].id;
+      for (const org of [orgA, orgB]) await aprovar(org).then((r) => expect(r.status).toBe(201));
     });
     it('reprovação exige motivo', async () => {
       await http().post(`/admin/organizations/${orgA}/decision`).auth(tokAdmin, { type: 'bearer' }).send({ decision: 'REPROVAR' }).expect(400);
+    });
+  });
+
+  describe('cadastro e validação institucional (ONG C)', () => {
+    let tokC: string, orgC: string;
+    beforeAll(async () => {
+      await criar('ongC@example.invalid', UserType.ONG, { cnpj: '04.252.011/0001-10' });
+      tokC = (await login('ongC@example.invalid')).body.access_token;
+      orgC = (await http().get('/organizations/me').auth(tokC, { type: 'bearer' })).body.id;
+    });
+    const admin = (m: 'get' | 'post', url: string) => (http() as any)[m](url).auth(tokAdmin, { type: 'bearer' });
+
+    it('começa INCOMPLETO e não envia sem os dados e documentos obrigatórios', async () => {
+      const me = (await http().get('/organizations/me').auth(tokC, { type: 'bearer' })).body;
+      expect(me.status).toBe('INCOMPLETO');
+      const r = await http().post('/organizations/me/submit').auth(tokC, { type: 'bearer' }).expect(400);
+      expect(r.body.missing.documents).toEqual(expect.arrayContaining(TIPOS));
+      expect(r.body.missing.fields).toContain('Nome do representante legal');
+    });
+    it('valida CPF/telefone no servidor e normaliza os dados', async () => {
+      await http().patch('/organizations/me').auth(tokC, { type: 'bearer' }).send({ legalRepCpf: '111.111.111-11' }).expect(400);
+      await http().patch('/organizations/me').auth(tokC, { type: 'bearer' }).send({ phone: '123' }).expect(400);
+      const o = (await http().patch('/organizations/me').auth(tokC, { type: 'bearer' }).send(dados('04252011000110')).expect(200)).body;
+      expect(o).toMatchObject({ zip: '01310100', phone: '1133334444', state: 'SP', legalRepCpf: '52998224725' });
+    });
+    it('BrasilAPI fora do ar: fica EM_ANALISE (pendente) e a aprovação é bloqueada sem justificativa', async () => {
+      brasil = 'down';
+      for (const t of TIPOS) await http().post('/organizations/me/documents').auth(tokC, { type: 'bearer' }).field('type', t).attach('file', pdf, { filename: `${t}.pdf`, contentType: 'application/pdf' }).expect(201);
+      await http().post('/organizations/me/submit').auth(tokC, { type: 'bearer' }).expect(201);
+      const det = (await admin('get', `/admin/organizations/${orgC}`)).body;
+      expect(det.status).toBe('EM_ANALISE');
+      const b = det.externalChecks.find((c: any) => c.source === 'BRASILAPI');
+      expect(b).toMatchObject({ status: 'INDISPONIVEL', httpStatus: 503 });
+      expect(b.queriedAt).toBeDefined();
+      expect(det.externalChecks.map((c: any) => c.source).sort()).toEqual(['BRASILAPI', 'MAPA_OSC', 'PORTAL_TRANSPARENCIA', 'TRANSFEREGOV']);
+      expect(det.externalChecks.find((c: any) => c.source === 'MAPA_OSC').status).toBe('NAO_ENCONTRADO');
+      const r = await aprovar(orgC);
+      expect(r.status).toBe(400);
+      expect(r.body.message).toMatch(/BRASILAPI/);
+      expect((await admin('get', `/admin/organizations/${orgC}`)).body.status).toBe('EM_ANALISE');
+    });
+    it('ONG em análise não aparece na vitrine pública e não pode alterar cadastro/documentos', async () => {
+      expect((await http().get('/organizations/public')).body.map((o: any) => o.id)).not.toContain(orgC);
+      await http().get(`/organizations/public/${orgC}`).expect(404);
+      await http().patch('/organizations/me').auth(tokC, { type: 'bearer' }).send({ tradeName: 'Nova' }).expect(400);
+      await http().post('/organizations/me/documents').auth(tokC, { type: 'bearer' }).field('type', 'OUTRO').attach('file', pdf, { filename: 'x.pdf', contentType: 'application/pdf' }).expect(400);
+    });
+    it('reexecutar consultas registra novo histórico com fonte e data; divergência vira ALERTA', async () => {
+      brasil = 'divergente';
+      await admin('post', `/admin/organizations/${orgC}/checks/run`).expect(201);
+      const det = (await admin('get', `/admin/organizations/${orgC}`)).body;
+      expect(det.externalCheckHistory.length).toBeGreaterThanOrEqual(8);
+      const b = det.externalChecks.find((c: any) => c.source === 'BRASILAPI');
+      expect(b.status).toBe('ALERTA');
+      expect(b.findings.join(' ')).toMatch(/Razão social diverge/);
+      const r = await aprovar(orgC);
+      expect(r.status).toBe(400);
+      expect(r.body.blockers).toEqual(expect.arrayContaining(['alerta em BRASILAPI']));
+    });
+    it('consulta de sanções com registro vira ALERTA; ONG não acessa o resultado bruto das consultas', async () => {
+      brasil = 'ok'; portalAlerta = true;
+      await admin('post', `/admin/organizations/${orgC}/checks/run`).expect(201);
+      const p = (await admin('get', `/admin/organizations/${orgC}`)).body.externalChecks.find((c: any) => c.source === 'PORTAL_TRANSPARENCIA');
+      expect(p.status).toBe('ALERTA');
+      const me = (await http().get('/organizations/me').auth(tokC, { type: 'bearer' })).body;
+      expect(JSON.stringify(me)).not.toMatch(/findings|Sanç|CEIS/);
+      await http().get(`/admin/organizations/${orgC}`).auth(tokC, { type: 'bearer' }).expect(403);
+      portalAlerta = false;
+    });
+    it('admin solicita documentos complementares → AGUARDANDO_DOCUMENTACAO; ONG reenvia', async () => {
+      await admin('post', `/admin/organizations/${orgC}/request-documents`).send({ message: 'curto' }).expect(400);
+      await admin('post', `/admin/organizations/${orgC}/request-documents`).send({ message: 'Envie a ata atualizada e legível.' }).expect(201);
+      const me = (await http().get('/organizations/me').auth(tokC, { type: 'bearer' })).body;
+      expect(me).toMatchObject({ status: 'AGUARDANDO_DOCUMENTACAO', statusReason: 'Envie a ata atualizada e legível.' });
+      await http().post('/organizations/me/documents').auth(tokC, { type: 'bearer' }).field('type', 'ATA_DIRETORIA').attach('file', pdf, { filename: 'ata2.pdf', contentType: 'application/pdf' }).expect(201);
+      await http().post('/organizations/me/submit').auth(tokC, { type: 'bearer' }).expect(201);
+    });
+    it('aprovação exige todos os documentos analisados e, com consultas OK, dispensa justificativa', async () => {
+      const r = await aprovar(orgC);
+      expect(r.status).toBe(201);
+      expect(r.body.status).toBe('APROVADA');
+      const pub = (await http().get('/organizations/public')).body.find((o: any) => o.id === orgC);
+      expect(pub).toBeDefined();
+      expect(pub).not.toHaveProperty('legalRepCpf');
+      expect(pub).not.toHaveProperty('email');
+      const hist = (await admin('get', `/admin/organizations/${orgC}`)).body.validations.map((v: any) => v.decision);
+      expect(hist).toEqual(expect.arrayContaining(['SOLICITAR_DOCUMENTOS', 'APROVAR']));
+    });
+    it('ONG ainda não aprovada não publica campanha', async () => {
+      await criar('ongD@example.invalid', UserType.ONG, { cnpj: '07526557000100' });
+      const tokD = (await login('ongD@example.invalid')).body.access_token;
+      await http().post('/my/campaigns').auth(tokD, { type: 'bearer' }).send({ title: 'Campanha D', description: 'Descrição longa o bastante.', goalCents: 100000 }).expect(403);
     });
   });
 
@@ -231,7 +352,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
     it('registra as ações relevantes com responsável, entidade e organização', async () => {
       const logs = (await http().get('/admin/audit-logs?limit=500').auth(tokAdmin, { type: 'bearer' }).expect(200)).body;
       const actions = logs.map((l: any) => l.action);
-      for (const a of ['LOGIN', 'LOGIN_LOCKED', 'MFA_ENABLED', 'ORG_CREATED', 'ORG_DOCUMENT_UPLOADED', 'ORG_SUBMITTED', 'ORG_APPROVED', 'ORG_SUSPENDED', 'CAMPAIGN_CREATED', 'CAMPAIGN_PUBLISHED', 'EXPENSE_CREATED', 'EXPENSE_DOCUMENT_UPLOADED', 'DONATION_CREATED', 'DONATION_CONFIRMED']) {
+      for (const a of ['LOGIN', 'LOGIN_LOCKED', 'MFA_ENABLED', 'ORG_CREATED', 'ORG_DOCUMENT_UPLOADED', 'ORG_SUBMITTED', 'ORG_APPROVED', 'ORG_DOCUMENTS_REQUESTED', 'ORG_CHECKS_RERUN', 'ORG_SUSPENDED', 'CAMPAIGN_CREATED', 'CAMPAIGN_PUBLISHED', 'EXPENSE_CREATED', 'EXPENSE_DOCUMENT_UPLOADED', 'DONATION_CREATED', 'DONATION_CONFIRMED']) {
         expect(actions).toContain(a);
       }
       const aprov = logs.find((l: any) => l.action === 'ORG_APPROVED');

@@ -49,6 +49,7 @@ import { Session } from './auth/entities/session.entity';
 import { Organization } from './organizations/entities/organization.entity';
 import { OrganizationDocument } from './organizations/entities/organization-document.entity';
 import { OrganizationValidation } from './organizations/entities/organization-validation.entity';
+import { OrganizationExternalCheck } from './organizations/entities/organization-external-check.entity';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { Campaign } from './campaigns/entities/campaign.entity';
 import { CampaignsModule } from './campaigns/campaigns.module';
@@ -94,6 +95,7 @@ import { AppService } from './app.service';
         Organization,
         OrganizationDocument,
         OrganizationValidation,
+        OrganizationExternalCheck,
         Campaign,
         Donation,
         Expense,
