@@ -54,9 +54,9 @@ describe('Isolamento entre ONGs', () => {
 
   describe('prestação de contas', () => {
     const expenses = { findOneBy: jest.fn(async ({ organizationId }) => (organizationId === 'org-A' ? { id: 'e1', organizationId } : null)), save: jest.fn(), create: jest.fn() };
-    const campaigns = { findOneBy: jest.fn(async ({ organizationId }) => (organizationId === 'org-A' ? { id: 'c1' } : null)) };
+    const campaigns = { existsBy: jest.fn(async ({ organizationId }) => organizationId === 'org-A') };
     const docs = { findOne: jest.fn(async () => ({ id: 'd1', organizationId: 'org-A', name: 'nf.pdf', mime: 'application/pdf', content: Buffer.from('x') })), save: jest.fn(), create: jest.fn() };
-    const svc = new AccountabilityService(expenses as any, docs as any, {} as any, {} as any, campaigns as any, {} as any, orgs, audit);
+    const svc = new AccountabilityService(expenses as any, docs as any, {} as any, {} as any, campaigns as any, {} as any, {} as any, {} as any, orgs, audit);
 
     it('ONG B não registra despesa em campanha da ONG A', async () => {
       const dto = { campaignId: 'c1', description: 'Compra de cestas', category: 'Alimentos', amountCents: 1000, spentAt: '2026-01-01' };
@@ -65,7 +65,7 @@ describe('Isolamento entre ONGs', () => {
     });
 
     it('ONG B não envia comprovante para despesa da ONG A', async () => {
-      await expect(svc.uploadExpenseDocument({ id: 2, type: 'ONG' }, 'e1', undefined)).rejects.toThrow(NotFoundException);
+      await expect(svc.uploadExpenseDocument({ id: 2, type: 'ONG' }, 'e1', { kind: 'NOTA_FISCAL' } as any, undefined)).rejects.toThrow(NotFoundException);
     });
 
     it('ONG B não baixa comprovante da ONG A; dono e admin conseguem', async () => {

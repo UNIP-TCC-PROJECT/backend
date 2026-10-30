@@ -13,6 +13,7 @@ import axios from 'axios';
 import { AccountabilityModule } from '../src/accountability/accountability.module';
 import { DeliveryEvidence, DeliveryRecord } from '../src/accountability/entities/delivery.entity';
 import { Expense, ExpenseDocument } from '../src/accountability/entities/expense.entity';
+import { DeliveryEvidence as Ev } from '../src/accountability/entities/delivery.entity';
 import { AuditLog } from '../src/audit/audit-log.entity';
 import { AuditModule } from '../src/audit/audit.module';
 import { Session } from '../src/auth/entities/session.entity';
@@ -331,7 +332,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       campA = (await http().post('/my/campaigns').auth(tokA, { type: 'bearer' }).send({ title: 'Campanha A', description: 'Descrição longa o bastante.', goalCents: 500000, ...dataOK }).expect(201)).body.id;
       await http().post(`/my/campaigns/${campA}/status`).auth(tokA, { type: 'bearer' }).send({ status: 'ATIVA' }).expect(201);
       expA = (await http().post('/my/expenses').auth(tokA, { type: 'bearer' }).send({ campaignId: campA, description: 'Compra de cestas básicas', category: 'Alimentos', amountCents: 20000, spentAt: '2026-01-10' }).expect(201)).body.id;
-      const doc = (await http().post(`/my/expenses/${expA}/documents`).auth(tokA, { type: 'bearer' }).attach('file', pdf, { filename: 'nf.pdf', contentType: 'application/pdf' }).expect(201)).body;
+      const doc = (await http().post(`/my/expenses/${expA}/documents`).auth(tokA, { type: 'bearer' }).field('kind', 'NOTA_FISCAL').attach('file', pdf, { filename: 'nf.pdf', contentType: 'application/pdf' }).expect(201)).body;
       expect(doc).not.toHaveProperty('content');
 
       expect((await http().get('/my/campaigns').auth(tokB, { type: 'bearer' })).body).toEqual([]);
@@ -340,7 +341,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       await http().patch(`/my/campaigns/${campA}`).auth(tokB, { type: 'bearer' }).send({ title: 'Invadida' }).expect(404);
       await http().post(`/my/campaigns/${campA}/status`).auth(tokB, { type: 'bearer' }).send({ status: 'ENCERRADA' }).expect(404);
       await http().post('/my/expenses').auth(tokB, { type: 'bearer' }).send({ campaignId: campA, description: 'Despesa forjada', category: 'Outros', amountCents: 100, spentAt: '2026-01-10' }).expect(404);
-      await http().post(`/my/expenses/${expA}/documents`).auth(tokB, { type: 'bearer' }).attach('file', pdf, { filename: 'x.pdf', contentType: 'application/pdf' }).expect(404);
+      await http().post(`/my/expenses/${expA}/documents`).auth(tokB, { type: 'bearer' }).field('kind', 'NOTA_FISCAL').attach('file', pdf, { filename: 'x.pdf', contentType: 'application/pdf' }).expect(404);
       await http().get(`/expenses/${expA}/documents`).auth(tokB, { type: 'bearer' }).expect(404);
       await http().get(`/expense-documents/${doc.id}/file`).auth(tokB, { type: 'bearer' }).expect(404);
       await http().get(`/organizations/documents/${docA}/file`).auth(tokB, { type: 'bearer' }).expect(404);
@@ -545,6 +546,154 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       expect(r.body.imageUrl).toMatch(/^\/uploads\/campaigns\/[\w-]+\.png$/);
       await unlink(`${process.cwd()}${r.body.imageUrl}`);
     });
+
+    describe('prestação de contas e transparência', () => {
+      const ong = (m: 'get' | 'post' | 'patch', url: string, tok = tokOngP) => (http() as any)[m](url).auth(tok, { type: 'bearer' });
+      const adm = (m: 'get' | 'post', url: string) => (http() as any)[m](url).auth(tokAdmin, { type: 'bearer' });
+      const review = (path: string, body: object) => adm('post', path).send(body);
+      const nf = (id: string, tok = tokOngP, kind = 'NOTA_FISCAL') => http().post(`/my/expenses/${id}/documents`).auth(tok, { type: 'bearer' }).field('kind', kind).attach('file', pdf, { filename: 'nf-com-cpf-52998224725.pdf', contentType: 'application/pdf' });
+      const jpegExif = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.from([0xff, 0xe0, 0, 6, 74, 70, 73, 70]), Buffer.concat([Buffer.from([0xff, 0xe1, 0, 30]), Buffer.from('Exif GPS -23.55,-46.63 (xx)')]), Buffer.from([0xff, 0xda, 0, 2, 9, 9, 9, 0xff, 0xd9])]);
+      const foto = (fields: Record<string, string>, tok = tokOngP, buf = jpegExif) => {
+        let r = http().post('/my/evidences').auth(tok, { type: 'bearer' });
+        for (const [k, v] of Object.entries(fields)) r = r.field(k, v);
+        return r.attach('file', buf, { filename: 'foto.jpg', contentType: 'image/jpeg' });
+      };
+      const hoje = new Date().toISOString().slice(0, 10);
+      let exp1: string, exp2: string, doc1: string, delivery: string, ev1: string, ev2: string;
+
+      it('despesa: valida dados, ignora campos de controle e nasce ENVIADA', async () => {
+        const base = { campaignId: campP, description: 'Compra de alimentos', category: 'Alimentos', amountCents: 4000, spentAt: hoje, supplier: 'João da Silva', supplierDocument: '529.982.247-25' };
+        await ong('post', '/my/expenses').send({ ...base, spentAt: '2999-01-01' }).expect(400);
+        await ong('post', '/my/expenses').send({ ...base, supplierDocument: '111.111.111-11' }).expect(400);
+        const r = (await ong('post', '/my/expenses').send({ ...base, status: 'APROVADA', reviewedBy: 1 }).expect(201)).body;
+        expect(r.status).toBe('ENVIADA');
+        expect(r.reviewedBy).toBeNull();
+        exp1 = r.id;
+        exp2 = (await ong('post', '/my/expenses').send({ ...base, description: 'Material escolar', amountCents: 5000, supplier: 'Papelaria Central Ltda', supplierDocument: '11.222.333/0001-81' }).expect(201)).body.id;
+      });
+      it('comprovante: tipo obrigatório, conteúdo validado e nunca nasce aprovado', async () => {
+        await nf(exp1, tokOngP, 'QUALQUER').expect(400);
+        await ong('post', `/my/expenses/${exp1}/documents`).field('kind', 'RECIBO').attach('file', Buffer.from('MZ-exe'), { filename: 'x.pdf', contentType: 'application/pdf' }).expect(400);
+        const d = (await nf(exp1).expect(201)).body;
+        expect(d).toMatchObject({ kind: 'NOTA_FISCAL', status: 'ENVIADA' });
+        expect(d).not.toHaveProperty('content');
+        doc1 = d.id;
+        await nf(exp2).expect(201);
+      });
+      it('só administrador analisa; ONG não aprova a própria despesa', async () => {
+        await ong('post', `/admin/expenses/${exp1}/review`).send({ action: 'APROVAR' }).expect(403);
+        const q = (await adm('get', '/admin/accountability/queue').expect(200)).body;
+        expect(q.expenses.map((e: any) => e.id)).toEqual(expect.arrayContaining([exp1, exp2]));
+        expect(q.expenses[0]).toHaveProperty('organizationName');
+      });
+      it('não aprova despesa sem comprovante aprovado', async () => {
+        const r = await review(`/admin/expenses/${exp1}/review`, { action: 'APROVAR' });
+        expect(r.status).toBe(400);
+        expect(r.body.message).toMatch(/comprovante/i);
+      });
+      it('em análise: ONG não altera nem anexa; pedido de complementação exige motivo e reabre a edição', async () => {
+        await review(`/admin/expenses/${exp1}/review`, { action: 'INICIAR' }).expect(201);
+        expect((await adm('get', `/admin/expenses/${exp1}`)).body.status).toBe('EM_ANALISE');
+        await ong('patch', `/my/expenses/${exp1}`).send({ amountCents: 1 }).expect(400);
+        await nf(exp1).expect(400);
+        await review(`/admin/expenses/${exp1}/review`, { action: 'COMPLEMENTAR' }).expect(400);
+        await review(`/admin/expenses/${exp1}/review`, { action: 'COMPLEMENTAR', reason: 'Envie também o comprovante de pagamento.' }).expect(201);
+        const mine = (await ong('get', '/my/expenses')).body.find((e: any) => e.id === exp1);
+        expect(mine).toMatchObject({ status: 'NECESSITA_COMPLEMENTACAO', reviewReason: 'Envie também o comprovante de pagamento.' });
+        await nf(exp1, tokOngP, 'COMPROVANTE_PAGAMENTO').expect(201);
+        await ong('post', `/my/expenses/${exp1}/resubmit`).expect(201);
+        expect((await adm('get', `/admin/expenses/${exp1}`)).body.status).toBe('ENVIADA');
+      });
+      it('aprova comprovante (publicável) e despesa; depois ela fica imutável', async () => {
+        const docs = (await adm('get', `/admin/expenses/${exp1}`)).body.documents;
+        for (const d of docs) await review(`/admin/expense-documents/${d.id}/review`, { action: 'APROVAR', publishable: d.id === doc1 }).expect(201);
+        await review(`/admin/expenses/${exp1}/review`, { action: 'APROVAR' }).expect(201);
+        await review(`/admin/expenses/${exp1}/review`, { action: 'REPROVAR', reason: 'tentando reabrir' }).expect(400);
+        await ong('patch', `/my/expenses/${exp1}`).send({ amountCents: 1 }).expect(400);
+        await nf(exp1).expect(400);
+      });
+      it('despesa acima do saldo arrecadado não é aprovada', async () => {
+        const d = (await adm('get', `/admin/expenses/${exp2}`)).body.documents[0];
+        await review(`/admin/expense-documents/${d.id}/review`, { action: 'APROVAR' }).expect(201);
+        const r = await review(`/admin/expenses/${exp2}/review`, { action: 'APROVAR' });
+        expect(r.status).toBe(400);
+        expect(r.body.message).toMatch(/saldo/);
+      });
+      it('entrega: quantidade distribuída ≤ comprada; campanha de outra ONG → 404; responsável preenchido', async () => {
+        const base = { campaignId: campP, expenseId: exp1, itemDescription: 'Cestas básicas', quantityPurchased: 100, quantityDistributed: 90, unit: 'cestas', description: 'Distribuição para 90 famílias, contato maria@ong.org e CPF 529.982.247-25.', deliveredAt: hoje, region: 'Zona Leste - São Paulo/SP', locationDetail: 'Rua Privada 123 (interno)' };
+        await ong('post', '/my/deliveries').send({ ...base, quantityDistributed: 101 }).expect(400);
+        await ong('post', '/my/deliveries', tokB).send(base).expect(404);
+        const d = (await ong('post', '/my/deliveries').send(base).expect(201)).body;
+        expect(d.responsibleName).toBe('ongP');
+        delivery = d.id;
+      });
+      it('evidências: vínculo obrigatório, tipo real validado, EXIF/GPS removido, nascem ENVIADAS', async () => {
+        const f = { kind: 'FOTO_ENTREGA', description: 'Entrega das cestas à comunidade', takenAt: hoje };
+        await foto(f).expect(400); // sem vínculo
+        await foto({ ...f, deliveryRecordId: delivery }, tokB).expect(404); // entrega de outra ONG
+        await foto({ ...f, deliveryRecordId: delivery }, tokOngP, Buffer.from('<svg onload=alert(1)>')).expect(400);
+        const r = (await foto({ ...f, deliveryRecordId: delivery }).expect(201)).body;
+        expect(r).toMatchObject({ status: 'ENVIADA', kind: 'FOTO_ENTREGA' });
+        expect(r).not.toHaveProperty('content');
+        ev1 = r.id;
+        ev2 = (await foto({ ...f, kind: 'FOTO_ACAO', description: 'Foto da ação, não publicável', campaignId: campP }).expect(201)).body.id;
+        const stored = await db.getRepository(Ev).findOne({ where: { id: ev1 }, select: { id: true, content: true } });
+        expect(stored!.content.includes(Buffer.from('Exif'))).toBe(false);
+        expect(stored!.content.includes(Buffer.from('GPS'))).toBe(false);
+      });
+      it('perfil público antes da análise: só a despesa aprovada; nada de entrega/evidência; sem dados sensíveis', async () => {
+        const p = (await http().get(`/transparency/organizations/${orgP}`).expect(200)).body;
+        expect(p.expenses.map((e: any) => e.id)).toEqual([exp1]);
+        expect(p.expenses[0].supplier).toBe('Pessoa física (identidade protegida)');
+        expect(p.deliveries).toEqual([]);
+        expect(p.campaignEvidences).toEqual([]);
+        const raw = JSON.stringify(p);
+        expect(raw).not.toMatch(/52998224725|11222333000181|supplierDocument|locationDetail|responsibleName|Rua Privada|nf-com-cpf|content|sha256/);
+        await http().get(`/transparency/evidences/${ev1}/file`).expect(404); // enviada ≠ aprovada
+        await http().get(`/transparency/expense-documents/${doc1}/file`).expect(200);
+      });
+      it('totais são calculados dos registros e batem com o painel da ONG', async () => {
+        const s = (await ong('get', '/my/accountability/summary').expect(200)).body;
+        expect(s).toMatchObject({ totalRaisedCents: 5500, approvedExpensesCents: 4000, balanceCents: 1500, pendingExpensesCents: 5000, pendingExpensesCount: 1, deliveriesRegistered: 1, deliveriesVerified: 0 });
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        expect(p.totals).toEqual(expect.objectContaining({ totalRaisedCents: 5500, approvedExpensesCents: 4000, balanceCents: 1500, pendingExpensesCount: 1 }));
+        expect(p.campaigns[0]).toMatchObject({ totalRaisedCents: 5500, approvedExpensesCents: 4000 });
+        // não há como a ONG informar totais: campos extras são descartados
+        await ong('patch', `/my/expenses/${exp2}`).send({ totalRaisedCents: 999999, balanceCents: 999999, amountCents: 4500 }).expect(200);
+        expect((await ong('get', '/my/accountability/summary')).body.totalRaisedCents).toBe(5500);
+      });
+      it('aprovação de evidência: publicável aparece (redigida); não publicável fica oculta; arquivo público sem metadados', async () => {
+        await review(`/admin/evidences/${ev1}/review`, { action: 'APROVAR', publishable: true }).expect(201);
+        await review(`/admin/evidences/${ev2}/review`, { action: 'APROVAR', publishable: false }).expect(201);
+        const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+        expect(p.deliveries).toHaveLength(1);
+        expect(p.deliveries[0]).toMatchObject({ region: 'Zona Leste - São Paulo/SP', quantityDistributed: 90 });
+        expect(p.deliveries[0].description).toContain('[CPF removido]');
+        expect(p.deliveries[0].description).toContain('[e-mail removido]');
+        expect(p.deliveries[0].description).not.toMatch(/529\.982|maria@/);
+        expect(p.deliveries[0].evidences.map((e: any) => e.id)).toEqual([ev1]);
+        expect(p.campaignEvidences).toEqual([]); // ev2 aprovada, mas não publicável
+        await http().get(`/transparency/evidences/${ev2}/file`).expect(404);
+        const img = await http().get(`/transparency/evidences/${ev1}/file`).expect(200).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+        expect(Buffer.from(img.body).includes(Buffer.from('Exif'))).toBe(false);
+        expect((await ong('get', '/my/accountability/summary')).body.deliveriesVerified).toBe(1);
+      });
+      it('evidência com pedido de complementação volta à fila quando a ONG corrige', async () => {
+        const ev3 = (await foto({ kind: 'FOTO_COMPRA', description: 'Foto da compra', takenAt: hoje, campaignId: campP }).expect(201)).body.id;
+        await review(`/admin/evidences/${ev3}/review`, { action: 'COMPLEMENTAR', reason: 'Foto ilegível, envie outra descrição.' }).expect(201);
+        await ong('patch', `/my/evidences/${ev3}`).send({ description: 'Foto da compra de alimentos no atacado' }).expect(200);
+        expect((await adm('get', `/admin/evidences/${ev3}`)).body.status).toBe('ENVIADA');
+        await review(`/admin/evidences/${ev3}/review`, { action: 'REPROVAR' }).expect(400); // motivo obrigatório
+      });
+      it('isolamento: outra ONG não vê despesas/evidências; ONG suspensa some do perfil público', async () => {
+        expect((await ong('get', '/my/expenses', tokB)).body).toEqual([]);
+        expect((await ong('get', '/my/evidences', tokB)).body).toEqual([]);
+        await ong('get', `/evidences/${ev1}/file`, tokB).expect(404);
+        expect((await ong('get', '/my/accountability/summary', tokB)).body).toMatchObject({ totalRaisedCents: 0, approvedExpensesCents: 0 });
+        await http().get(`/transparency/organizations/${orgA}`).expect(404); // ONG A foi suspensa antes
+        await ong('get', '/admin/accountability/queue').expect(403);
+      });
+    });
   });
 
   describe('sessões e proteção de login', () => {
@@ -570,7 +719,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
     it('registra as ações relevantes com responsável, entidade e organização', async () => {
       const logs = (await http().get('/admin/audit-logs?limit=500').auth(tokAdmin, { type: 'bearer' }).expect(200)).body;
       const actions = logs.map((l: any) => l.action);
-      for (const a of ['LOGIN', 'LOGIN_LOCKED', 'MFA_ENABLED', 'ORG_CREATED', 'ORG_DOCUMENT_UPLOADED', 'ORG_SUBMITTED', 'ORG_APPROVED', 'ORG_DOCUMENTS_REQUESTED', 'ORG_CHECKS_RERUN', 'ORG_SUSPENDED', 'CAMPAIGN_CREATED', 'CAMPAIGN_PUBLISHED', 'EXPENSE_CREATED', 'EXPENSE_DOCUMENT_UPLOADED', 'DONATION_CREATED', 'DONATION_CONFIRMED']) {
+      for (const a of ['LOGIN', 'LOGIN_LOCKED', 'MFA_ENABLED', 'ORG_CREATED', 'ORG_DOCUMENT_UPLOADED', 'ORG_SUBMITTED', 'ORG_APPROVED', 'ORG_DOCUMENTS_REQUESTED', 'ORG_CHECKS_RERUN', 'ORG_SUSPENDED', 'CAMPAIGN_CREATED', 'CAMPAIGN_PUBLISHED', 'EXPENSE_CREATED', 'EXPENSE_DOCUMENT_UPLOADED', 'EXPENSE_APPROVED', 'EXPENSE_COMPLEMENT_REQUESTED', 'DELIVERY_RECORDED', 'EVIDENCE_UPLOADED', 'EVIDENCE_REVIEWED', 'DONATION_CREATED', 'DONATION_CONFIRMED']) {
         expect(actions).toContain(a);
       }
       const aprov = logs.find((l: any) => l.action === 'ORG_APPROVED');

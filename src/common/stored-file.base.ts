@@ -23,8 +23,9 @@ export abstract class StoredFile {
   @Column({ type: 'bytea', select: false })
   content!: Buffer;
 
+  // Vocabulário próprio de cada módulo: ReviewStatus (documentos institucionais) ou AccStatus (prestação de contas).
   @Column({ type: 'varchar', default: ReviewStatus.PENDENTE })
-  status!: ReviewStatus;
+  status!: string;
 
   @Column({ type: 'int' })
   uploadedBy!: number;

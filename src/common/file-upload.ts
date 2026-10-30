@@ -33,12 +33,13 @@ export function prepareFile(file?: Express.Multer.File) {
 export function fileResponse(
   res: { set(h: Record<string, string>): unknown },
   f: { name: string; mime: string; content: Buffer },
+  cacheControl = 'private, no-store',
 ) {
   res.set({
     'Content-Type': f.mime,
     'Content-Disposition': `attachment; filename="${encodeURIComponent(f.name)}"`,
     'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'private, no-store',
+    'Cache-Control': cacheControl,
   });
   return new StreamableFile(f.content);
 }
