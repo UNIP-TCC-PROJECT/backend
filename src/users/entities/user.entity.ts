@@ -118,6 +118,18 @@ status!: UserStatus;
   @Column({ nullable: true })
   category?: string;
 
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts!: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lockedUntil?: Date | null;
+
+  @Column({ default: false })
+  mfaEnabled!: boolean;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  mfaSecret?: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

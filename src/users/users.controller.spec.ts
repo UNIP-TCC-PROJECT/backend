@@ -3,6 +3,8 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { BadRequestException } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import { AuthService } from '../auth/auth.service';
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -23,8 +25,11 @@ describe('UsersController', () => {
           provide: UsersService,
           useValue: mockUsersService,
         },
+        { provide: AuthService, useValue: { login: jest.fn() } },
       ],
     })
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();

@@ -11,14 +11,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
-import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
 @Injectable()
@@ -26,7 +25,6 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private repo: Repository<User>,
-    private jwtService: JwtService,
     private cnpjVerificationService: CnpjVerificationService,
   ) {}
 
@@ -39,7 +37,7 @@ export class UsersService {
       throw new ConflictException('Email já cadastrado');
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
     let medalhaVerde = false;
 
     if (data.type === UserType.ONG) {
@@ -66,43 +64,6 @@ export class UsersService {
     const { password, ...result } = savedUser;
 
     return result;
-  }
-
-  async login(email: string, password: string) {
-    const user = await this.repo.findOne({
-      where: { email },
-    });
-
-    if (!user) {
-      throw new HttpException(
-        'Email ou senha inválidos',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-      throw new HttpException(
-        'Email ou senha inválidos',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    if (user.status !== UserStatus.ATIVO) {
-      throw new ForbiddenException('Esta conta não está ativa');
-    }
-
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      type: user.type,
-      status: user.status,
-    };
-
-    const accessToken = await this.jwtService.signAsync(payload);
-
-    return { access_token: accessToken };
   }
 
   async findById(id: number) {
@@ -282,7 +243,7 @@ export class UsersService {
       throw new ConflictException('Email já cadastrado');
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
     const admin = this.repo.create({
       name: data.name,

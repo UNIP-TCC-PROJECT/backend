@@ -16,6 +16,10 @@ export class AdminGuard implements CanActivate {
       );
     }
 
+    if (!request.user.mfaVerified) {
+      throw new ForbiddenException('MFA obrigatório para administradores');
+    }
+
     return true;
   }
 }

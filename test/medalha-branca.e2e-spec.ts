@@ -16,6 +16,9 @@ import {
   PedidoMedalhaBranca,
 } from '../src/medalhas/entities/pedido-medalha-branca.entity';
 import { MedalhasModule } from '../src/medalhas/medalhas.module';
+import { AuditModule } from '../src/audit/audit.module';
+import { AuditLog } from '../src/audit/audit-log.entity';
+import { Session } from '../src/auth/entities/session.entity';
 
 // Banco real, mas tabelas/contas exclusivas de um schema temporário.
 // Execute: node node_modules/jest/bin/jest.js --config test/jest-medalha-branca.json --runInBand
@@ -70,10 +73,13 @@ describe('Medalha Branca — fluxo isolado no PostgreSQL', () => {
             Medalha,
             PedidoMedalhaBranca,
             DocumentoMedalhaBranca,
+            Session,
+            AuditLog,
           ],
         }),
         MedalhasModule,
         UsersModule,
+        AuditModule,
       ],
     }).compile();
     app = module.createNestApplication<NestExpressApplication>();
@@ -106,13 +112,25 @@ describe('Medalha Branca — fluxo isolado no PostgreSQL', () => {
     ong = await criar('ong');
     outra = await criar('outra');
     const jwt = app.get(JwtService);
-    const assinar = (user: User) =>
-      jwt.sign({ sub: user.id, email: user.email, type: user.type });
-    token = assinar(ong);
-    outroToken = assinar(outra);
-    adminToken = assinar(await criar('admin', UserType.ADMIN));
-    doadorToken = assinar(await criar('doador', UserType.DOADOR));
-    inativoToken = assinar(
+    // Tokens só valem com sessão ativa no banco; admin precisa de sessão com MFA verificado.
+    const assinar = async (user: User) => {
+      const sessao = await db.getRepository(Session).save({
+        userId: user.id,
+        mfaVerified: true,
+        expiresAt: new Date(Date.now() + 3600_000),
+      });
+      return jwt.sign({
+        sub: user.id,
+        email: user.email,
+        type: user.type,
+        sid: sessao.id,
+      });
+    };
+    token = await assinar(ong);
+    outroToken = await assinar(outra);
+    adminToken = await assinar(await criar('admin', UserType.ADMIN));
+    doadorToken = await assinar(await criar('doador', UserType.DOADOR));
+    inativoToken = await assinar(
       await criar('suspensa', UserType.ONG, UserStatus.SUSPENSO),
     );
   });

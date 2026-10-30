@@ -43,6 +43,21 @@ import { AdminModule } from './admin/admin.module';
 import { PasswordResetModule } from './password-reset/password-reset.module';
 import { PasswordResetToken } from './password-reset/entities/password-reset-token.entity';
 
+import { AuditModule } from './audit/audit.module';
+import { AuditLog } from './audit/audit-log.entity';
+import { Session } from './auth/entities/session.entity';
+import { Organization } from './organizations/entities/organization.entity';
+import { OrganizationDocument } from './organizations/entities/organization-document.entity';
+import { OrganizationValidation } from './organizations/entities/organization-validation.entity';
+import { OrganizationsModule } from './organizations/organizations.module';
+import { Campaign } from './campaigns/entities/campaign.entity';
+import { CampaignsModule } from './campaigns/campaigns.module';
+import { Donation } from './donations/entities/donation.entity';
+import { DonationsModule } from './donations/donations.module';
+import { Expense, ExpenseDocument } from './accountability/entities/expense.entity';
+import { DeliveryRecord, DeliveryEvidence } from './accountability/entities/delivery.entity';
+import { AccountabilityModule } from './accountability/accountability.module';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -74,6 +89,17 @@ import { AppService } from './app.service';
         PedidoMedalhaBranca,
         DocumentoMedalhaBranca,
         PasswordResetToken,
+        Session,
+        AuditLog,
+        Organization,
+        OrganizationDocument,
+        OrganizationValidation,
+        Campaign,
+        Donation,
+        Expense,
+        ExpenseDocument,
+        DeliveryRecord,
+        DeliveryEvidence,
       ],
 
       synchronize: true,
@@ -90,6 +116,11 @@ import { AppService } from './app.service';
     InteressesModule,
     ConversasModule,
     PasswordResetModule,
+    AuditModule,
+    OrganizationsModule,
+    CampaignsModule,
+    DonationsModule,
+    AccountabilityModule,
   ],
 
   controllers: [

@@ -1,9 +1,14 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ROLES_KEY } from './roles.decorator';
 import { User, UserType } from '../users/entities/user.entity';
+import { ROLES_KEY } from './roles.decorator';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -38,7 +43,15 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    request.user = user;
+    // Administrador só opera com MFA verificado na sessão (rotas /auth/mfa/* não usam @Roles).
+    if (user.type === UserType.ADMIN && !tokenUser.mfaVerified) {
+      throw new ForbiddenException('MFA obrigatório para administradores');
+    }
+
+    request.user = Object.assign(user, {
+      sid: tokenUser.sid,
+      mfaVerified: tokenUser.mfaVerified,
+    });
 
     return requiredRoles.includes(user.type);
   }

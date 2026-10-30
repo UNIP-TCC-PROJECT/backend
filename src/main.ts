@@ -19,8 +19,21 @@ async function bootstrap() {
     },
   });
 
+  app.disable('x-powered-by');
+  app.use((_req: any, res: any, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+    }
+    next();
+  });
+
+  // Em produção defina CORS_ORIGINS (lista separada por vírgula); sem ela mantém o comportamento de desenvolvimento.
+  const origins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
   app.enableCors({
-    origin: true,
+    origin: origins?.length ? origins : true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: 'Content-Type, Accept, Authorization',

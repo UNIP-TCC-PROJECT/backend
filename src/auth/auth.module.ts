@@ -11,12 +11,15 @@ import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { OngGuard } from './ong.guard';
 import { User } from '../users/entities/user.entity';
+import { Session } from './entities/session.entity';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
 
 @Module({
   imports: [
     ConfigModule,
     PassportModule,
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Session]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -28,7 +31,8 @@ import { User } from '../users/entities/user.entity';
       }),
     }),
   ],
-  providers: [JwtStrategy, RolesGuard, OngGuard],
-  exports: [JwtModule, PassportModule, RolesGuard, OngGuard],
+  controllers: [AuthController],
+  providers: [JwtStrategy, RolesGuard, OngGuard, AuthService],
+  exports: [JwtModule, PassportModule, RolesGuard, OngGuard, AuthService],
 })
 export class AuthModule {}

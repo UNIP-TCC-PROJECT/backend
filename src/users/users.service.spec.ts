@@ -1,9 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { JwtService } from '@nestjs/jwt';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import bcrypt from 'bcrypt';
+import { NotFoundException } from '@nestjs/common';
 import { User, UserStatus, UserType } from './entities/user.entity';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 
@@ -13,7 +11,6 @@ describe('UsersService', () => {
     findOne: jest.fn(), find: jest.fn(), update: jest.fn(),
     save: jest.fn((user) => Promise.resolve(user)),
   };
-  const jwt = { sign: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -21,7 +18,6 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: getRepositoryToken(User), useValue: repo },
-        { provide: JwtService, useValue: jwt },
         { provide: CnpjVerificationService, useValue: { consultarCnpj: jest.fn() } },
       ],
     }).compile();
@@ -52,13 +48,6 @@ describe('UsersService', () => {
   it('should keep passwords out of the administrative user listing', async () => {
     repo.find.mockResolvedValue([{ id: 42, name: 'ONG', password: 'secret' }]);
     await expect(service.findAllUsers()).resolves.toEqual([{ id: 42, name: 'ONG' }]);
-  });
-
-  it('should reject login for an inactive account even with a valid password', async () => {
-    repo.findOne.mockResolvedValue({ id: 42, password: 'hash', status: 'SUSPENSO' });
-    jest.spyOn(bcrypt, 'compare').mockImplementation(async () => true);
-    await expect(service.login('ong@example.com', 'password')).rejects.toThrow(ForbiddenException);
-    expect(jwt.sign).not.toHaveBeenCalled();
   });
 
   it('should prevent profile edits from changing account role or status', async () => {

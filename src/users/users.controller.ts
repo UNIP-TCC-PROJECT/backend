@@ -21,6 +21,8 @@ import { randomUUID } from 'crypto';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { AuthService } from '../auth/auth.service';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
@@ -34,7 +36,10 @@ import { UserType } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private authService: AuthService,
+  ) {}
 
   @Post()
   @UsePipes(new ValidationPipe())
@@ -44,8 +49,13 @@ export class UsersController {
 
   @Post('login')
   @UsePipes(new ValidationPipe())
-  login(@Body() loginDto: LoginDto) {
-    return this.usersService.login(loginDto.email, loginDto.password);
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  login(@Body() loginDto: LoginDto, @Request() req: any) {
+    return this.authService.login(loginDto.email, loginDto.password, loginDto.otp, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get('me')
