@@ -245,7 +245,7 @@ describe('Revisão de segurança', () => {
       const PUBLIC_ALLOWLIST = [
         'POST /users', 'POST /users/login', 'GET /users/ongs', 'GET /users/ongs/:id', 'GET /metas/ong/:id', 'GET /publicacoes', 'GET /publicacoes/ong/:ongId', 'GET /publicacoes/:id',
         'GET /users/:ongId/reviews', 'POST /auth/forgot-password', 'POST /auth/reset-password', 'GET /campaigns', 'GET /campaigns/:id', 'GET /organizations/public', 'GET /organizations/public/:id',
-        'GET /transparency/organizations/:id', 'GET /transparency/expense-documents/:id/file', 'GET /transparency/evidences/:id/file', 'POST /webhooks/asaas', 'GET /',
+        'GET /transparency/organizations/:id', 'GET /transparency/expense-documents/:id/file', 'GET /transparency/evidences/:id/file', 'GET /transparency/organizations/:id/ledger', 'GET /transparency/by-owner/:userId', 'GET /transparency/publications/:id/accountability', 'GET /publicacoes/anexos/:id/file', 'POST /webhooks/asaas', 'GET /',
       ];
       const publicRoutes = routes.filter((r) => !isAuth(r.guards)).map((r) => `${r.method} ${r.path}`);
       const unexpected = publicRoutes.filter((r) => !PUBLIC_ALLOWLIST.includes(r));

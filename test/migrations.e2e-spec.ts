@@ -58,6 +58,9 @@ describe('Migrations', () => {
   });
 
   it('down() reverte na ordem inversa e up() reaplica (ida e volta)', async () => {
+    await ds.undoLastMigration(); // UserCoverImage
+    await ds.undoLastMigration(); // PublicacoesTransparencia
+    expect(await tables()).toBeGreaterThan(0);
     await ds.undoLastMigration(); // AuditImmutabilityAndRoles
     expect(await count(`SELECT count(*) n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND t.tgname LIKE 'audit_logs_%'`)).toBe(0);
     await ds.undoLastMigration(); // Baseline

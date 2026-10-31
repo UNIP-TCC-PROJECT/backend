@@ -1,3 +1,4 @@
+import { Publicacao } from '../publicacoes/entities/publicacao.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
@@ -16,7 +17,7 @@ import { Expense, ExpenseDocument } from './entities/expense.entity';
 import { TransparencyService } from './transparency.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Campaign, Donation, Organization, OrganizationDocument, OrganizationExternalCheck, AuditLog, User]), AuthModule, OrganizationsModule],
+  imports: [TypeOrmModule.forFeature([Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Campaign, Donation, Organization, OrganizationDocument, OrganizationExternalCheck, AuditLog, User, Publicacao]), AuthModule, OrganizationsModule],
   controllers: [AccountabilityController, TransparencyController],
   providers: [AccountabilityService, TransparencyService],
   exports: [AccountabilityService],

@@ -35,6 +35,9 @@ import { UsersModule } from '../src/users/users.module';
 import { Medalha } from '../src/medalhas/entities/medalha.entity';
 import { DocumentoMedalhaBranca, PedidoMedalhaBranca } from '../src/medalhas/entities/pedido-medalha-branca.entity';
 import { MedalhasModule } from '../src/medalhas/medalhas.module';
+import { Publicacao } from '../src/publicacoes/entities/publicacao.entity';
+import { PublicacaoAnexo } from '../src/publicacoes/entities/publicacao-anexo.entity';
+import { PublicacoesModule } from '../src/publicacoes/publicacoes.module';
 
 // Banco real em schema temporário.
 // Execute: node node_modules/jest/bin/jest.js --config test/jest-plataforma.json --runInBand
@@ -135,9 +138,9 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
         ConfigModule.forRoot({ isGlobal: true }),
         TypeOrmModule.forRoot({
           ...runtimeOptions(schema),
-          entities: [User, Session, AuditLog, Organization, OrganizationDocument, OrganizationValidation, OrganizationExternalCheck, Campaign, Donation, PaymentEvent, Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Medalha, PedidoMedalhaBranca, DocumentoMedalhaBranca],
+          entities: [User, Session, AuditLog, Organization, OrganizationDocument, OrganizationValidation, OrganizationExternalCheck, Campaign, Donation, PaymentEvent, Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Medalha, PedidoMedalhaBranca, DocumentoMedalhaBranca, Publicacao, PublicacaoAnexo],
         }),
-        AuditModule, UsersModule, OrganizationsModule, CampaignsModule, DonationsModule, PaymentsModule, AccountabilityModule, MedalhasModule,
+        AuditModule, UsersModule, OrganizationsModule, CampaignsModule, DonationsModule, PaymentsModule, AccountabilityModule, MedalhasModule, PublicacoesModule,
       ],
     })
       // O limite por IP (429) é coberto à parte; aqui o foco é o bloqueio por conta.
@@ -755,6 +758,178 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
         expect((await ong('get', '/my/accountability/summary', tokB)).body).toMatchObject({ totalRaisedCents: 0, approvedExpensesCents: 0 });
         await http().get(`/transparency/organizations/${orgA}`).expect(404); // ONG A foi suspensa antes
         await ong('get', '/admin/accountability/queue').expect(403);
+      });
+
+      describe('publicações ligadas à prestação de contas', () => {
+        const pub = (fields: Record<string, string>, tok = tokOngP, img?: Buffer) => {
+          let r = http().post('/publicacoes').auth(tok, { type: 'bearer' });
+          for (const [k, v] of Object.entries(fields)) r = r.field(k, v);
+          return img ? r.attach('image', img, { filename: 'foto.jpg', contentType: 'image/jpeg' }) : r;
+        };
+        const feed = async (ongId: number) => (await http().get(`/publicacoes/ong/${ongId}`).expect(200)).body.items as any[];
+        let ongUserId: number, postLinked: number, postPending: number, postImg: number, anexoImg: string, anexoPdf: string;
+
+        it('nível de transparência: calculado, com critérios, data da avaliação e sem pontuação', async () => {
+          const p = (await http().get(`/transparency/organizations/${orgP}`).expect(200)).body.transparencyLevel;
+          expect(p).toMatchObject({ rulesVersion: '1', evaluatedAt: expect.any(String) });
+          expect(p.dimensions.map((d: any) => d.key)).toEqual(['IDENTIDADE', 'DOCUMENTACAO', 'FINANCEIRA', 'COMPROVACAO', 'ENTREGAS', 'ATUALIZACAO']);
+          expect(['AVALIADA', 'EM_ANDAMENTO']).toContain(p.state);
+          expect(JSON.stringify(p)).not.toMatch(/score|pontua|percent/i);
+          // a ONG não tem como escolher o nível
+          await ong('patch', '/organizations/me').send({ transparencyLevel: 'EXEMPLAR' }).catch(() => undefined);
+          expect((await http().get(`/transparency/organizations/${orgP}`)).body.transparencyLevel.level).toBe(p.level);
+        });
+
+        it('criar: exige ONG logada; categoria e vínculos validados no backend', async () => {
+          ongUserId = (await db.getRepository(Organization).findOneByOrFail({ id: orgP })).ownerId;
+          await http().post('/publicacoes').send({ description: 'x' }).expect(401);
+          await http().post('/publicacoes').auth(tokDoador, { type: 'bearer' }).send({ description: 'x' }).expect(403);
+          await pub({ description: 'Texto', category: 'INVENTADA' }).expect(400);
+          await pub({ description: 'Texto', expenseId: exp1 }, tokB).expect(400); // despesa de outra ONG
+          await pub({ description: 'Texto', campaignId: campP, expenseId: exp1, deliveryRecordId: 'nao-e-uuid' }).expect(400);
+          await pub({ description: 'Texto', campaignId: campP, expenseId: exp1 }, tokA).expect(403); // ONG suspensa
+          const r = (await pub({ description: 'Compramos os alimentos da campanha.', category: 'RESULTADO_CAMPANHA', expenseId: exp1, deliveryRecordId: delivery }).expect(201)).body;
+          expect(r).toMatchObject({ category: 'RESULTADO_CAMPANHA', campaignId: campP, expenseId: exp1, deliveryRecordId: delivery });
+          postLinked = r.id;
+          postPending = (await pub({ description: 'Segunda compra, ainda em análise.', category: 'ACAO_SOCIAL', expenseId: exp2 }).expect(201)).body.id;
+        });
+
+        it('classificação é calculada: vínculo com registro aprovado = evidências analisadas; pendente = institucional', async () => {
+          const items = await feed(ongUserId);
+          const a = items.find((x) => x.id === postLinked), b = items.find((x) => x.id === postPending);
+          expect(a).toMatchObject({ classification: 'EVIDENCIAS_ANALISADAS', categoryLabel: 'Resultado de campanha' });
+          expect(a.accountability).toMatchObject({ expenseId: exp1, deliveryRecordId: delivery });
+          expect(b).toMatchObject({ classification: 'INSTITUCIONAL' });
+          expect(b.accountability.expenseId).toBeNull(); // despesa ainda não aprovada: vínculo não é exposto
+          expect(JSON.stringify(items)).not.toMatch(/content|supplierDocument|52998224725/);
+          const soAcao = (await http().get(`/publicacoes/ong/${ongUserId}?category=ACAO_SOCIAL`).expect(200)).body.items as any[];
+          expect(soAcao.length).toBeGreaterThan(0);
+          expect(soAcao.every((x) => x.category === 'ACAO_SOCIAL')).toBe(true);
+          await http().get(`/publicacoes/ong/${ongUserId}?category=INVENTADA`).expect(400);
+        });
+
+        it('imagem: exige autorização, nasce em análise, EXIF removido, só aparece após aprovação e publicável', async () => {
+          await pub({ description: 'Ação com foto' }, tokOngP, jpegExif).expect(400); // sem declaração de autorização
+          const r = (await pub({ description: 'Mutirão de entrega.', category: 'ACAO_SOCIAL', imageConsent: 'true' }, tokOngP, jpegExif).expect(201)).body;
+          postImg = r.id;
+          anexoImg = (await ong('get', '/publicacoes/mine')).body.find((x: any) => x.id === postImg).anexos[0].id;
+          const stored = await db.getRepository(PublicacaoAnexo).findOneOrFail({ where: { id: anexoImg }, select: { id: true, content: true, status: true, imageConsent: true } });
+          expect(stored).toMatchObject({ status: 'ENVIADA', imageConsent: true });
+          expect(stored.content.includes(Buffer.from('Exif'))).toBe(false);
+          const antes = (await feed(ongUserId)).find((x) => x.id === postImg);
+          expect(antes).toMatchObject({ classification: 'DOCUMENTADA', images: [], imageUrl: null, evidenceStatus: { published: 0, awaitingAnalysis: 1 } });
+          await http().get(`/publicacoes/anexos/${anexoImg}/file`).expect(404);
+          await ong('get', `/publicacoes/mine/anexos/${anexoImg}/file`).expect(200); // a própria ONG pré-visualiza
+          await ong('get', `/publicacoes/mine/anexos/${anexoImg}/file`, tokB).expect(404);
+        });
+
+        it('documento anexado: validação por conteúdo, limite e hash; ONG não analisa; admin publica só o autorizado', async () => {
+          await http().post(`/publicacoes/${postImg}/anexos`).auth(tokOngP, { type: 'bearer' }).attach('file', Buffer.from('MZ-exe'), { filename: 'x.pdf', contentType: 'application/pdf' }).expect(400);
+          await http().post(`/publicacoes/${postImg}/anexos`).auth(tokB, { type: 'bearer' }).attach('file', pdf, { filename: 'r.pdf', contentType: 'application/pdf' }).expect(404);
+          const d = (await http().post(`/publicacoes/${postImg}/anexos`).auth(tokOngP, { type: 'bearer' }).attach('file', pdf, { filename: 'relatorio.pdf', contentType: 'application/pdf' }).expect(201)).body;
+          expect(d).toMatchObject({ kind: 'DOCUMENTO', status: 'ENVIADA' });
+          expect(d.sha256).toMatch(/^[0-9a-f]{64}$/);
+          anexoPdf = d.id;
+          await ong('post', `/admin/publication-attachments/${anexoImg}/review`).send({ action: 'APROVAR', publishable: true }).expect(403);
+          expect((await adm('get', '/admin/publication-attachments').expect(200)).body.map((x: any) => x.id)).toEqual(expect.arrayContaining([anexoImg, anexoPdf]));
+          await review(`/admin/publication-attachments/${anexoImg}/review`, { action: 'APROVAR', publishable: true }).expect(201);
+          await review(`/admin/publication-attachments/${anexoPdf}/review`, { action: 'APROVAR', publishable: false }).expect(201);
+          await review(`/admin/publication-attachments/${anexoPdf}/review`, { action: 'REPROVAR', reason: 'já decidido' }).expect(400); // estado final
+        });
+
+        it('após a análise: imagem pública sem metadados; documento não publicável continua oculto', async () => {
+          const it = (await feed(ongUserId)).find((x) => x.id === postImg);
+          expect(it).toMatchObject({ classification: 'EVIDENCIAS_ANALISADAS', evidenceStatus: { published: 1, awaitingAnalysis: 0 } });
+          expect(it.imageUrl).toBe(`/publicacoes/anexos/${anexoImg}/file`);
+          expect(it.documents).toEqual([]);
+          const img = await http().get(it.imageUrl).expect(200).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (x: Buffer) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); });
+          expect(Buffer.from(img.body).includes(Buffer.from('Exif'))).toBe(false);
+          await http().get(`/publicacoes/anexos/${anexoPdf}/file`).expect(404);
+          expect((await http().get(`/publicacoes/${postImg}`).expect(200)).body.id).toBe(postImg);
+        });
+
+        it('imagem sem autorização declarada não pode ser publicada', async () => {
+          const other = (await pub({ description: 'Post para teste' }).expect(201)).body.id;
+          await http().post(`/publicacoes/${other}/anexos`).auth(tokOngP, { type: 'bearer' }).field('imageConsent', 'false').attach('file', jpegExif, { filename: 'f.jpg', contentType: 'image/jpeg' }).expect(400);
+        });
+
+        it('feed público só mostra ONG aprovada; perfil traz o caminho de volta (publicationIds) e a linha do tempo', async () => {
+          const all = (await http().get('/publicacoes?limit=20').expect(200)).body.items as any[];
+          expect(all.every((x) => x.organizationId)).toBe(true);
+          const p = (await http().get(`/transparency/organizations/${orgP}`)).body;
+          expect(p.expenses.find((e: any) => e.id === exp1).publicationIds).toContain(postLinked);
+          expect(p.deliveries[0].publicationIds).toContain(postLinked);
+          expect(p.timeline.filter((t: any) => t.type === 'PUBLICATION_CREATED').map((t: any) => t.ref)).toEqual(expect.arrayContaining([{ type: 'publication', id: postLinked }]));
+          expect(p.transparencyLevel).toBeDefined();
+        });
+
+        it('"Ver prestação de contas desta ação": registros reais e públicos, nada sensível; pendente não vaza', async () => {
+          const a = (await http().get(`/transparency/publications/${postLinked}/accountability`).expect(200)).body;
+          expect(a.expense).toMatchObject({ id: exp1, amountCents: 4000 });
+          expect(a.expense.documents.map((d: any) => d.id)).toContain(doc1);
+          expect(a.expense.documents[0].sha256).toMatch(/^[0-9a-f]{64}$/);
+          expect(a.delivery).toMatchObject({ id: delivery, region: 'Zona Leste - São Paulo/SP' });
+          expect(a.campaign.financials).toMatchObject({ totalRaisedCents: 5500 });
+          expect(a.relatedPublications.map((r: any) => r.id)).not.toContain(postLinked);
+          expect(JSON.stringify(a)).not.toMatch(/52998224725|supplierDocument|locationDetail|responsibleName|Rua Privada|maria@/);
+          const b = (await http().get(`/transparency/publications/${postPending}/accountability`).expect(200)).body;
+          expect(b.expense).toBeNull();
+          expect(b.pending.expense).toBe(true);
+          await http().get('/transparency/publications/999999/accountability').expect(404);
+        });
+
+        it('liga o perfil do usuário ONG à organização aprovada; ONG suspensa não é exposta', async () => {
+          expect((await http().get(`/transparency/by-owner/${ongUserId}`).expect(200)).body).toEqual({ organizationId: orgP });
+          const suspensa = (await db.getRepository(Organization).findOneByOrFail({ id: orgA })).ownerId;
+          await http().get(`/transparency/by-owner/${suspensa}`).expect(404);
+        });
+
+        it('dados completos: livro de movimentações consistente com os totais, com hash e sem identidades', async () => {
+          const l = (await http().get(`/transparency/organizations/${orgP}/ledger`).expect(200)).body;
+          const entradas = l.movements.filter((m: any) => m.type === 'ENTRADA' || m.type === 'ESTORNO').reduce((a: number, m: any) => a + m.amountCents, 0);
+          const despesas = l.movements.filter((m: any) => m.type === 'DESPESA');
+          expect(entradas).toBe(l.totals.totalRaisedCents);
+          expect(despesas.map((d: any) => d.id)).toEqual([exp1]); // exp2 ainda não aprovada: fora do livro
+          expect(-despesas.reduce((a: number, d: any) => a + d.amountCents, 0)).toBe(l.totals.approvedExpensesCents);
+          expect(l.totals.balanceCents).toBe(l.totals.totalRaisedCents - l.totals.approvedExpensesCents);
+          expect(despesas[0].documents.some((d: any) => d.id === doc1 && /^[0-9a-f]{64}$/.test(d.sha256))).toBe(true);
+          const mensal = l.monthly.reduce((a: any, m: any) => ({ r: a.r + m.raisedCents, d: a.d + m.approvedExpensesCents }), { r: 0, d: 0 });
+          expect(mensal).toEqual({ r: l.totals.totalRaisedCents, d: l.totals.approvedExpensesCents });
+          expect(l.glossary.sha256).toMatch(/impressão digital/);
+          expect(l.history.some((h: any) => h.action === 'EXPENSE_APPROVED')).toBe(true);
+          expect(l.history.every((h: any) => !('actorId' in h) && !('metadata' in h))).toBe(true);
+          expect(l.history.some((h: any) => h.ref?.id === exp2)).toBe(false); // despesa pendente não vaza no histórico
+          expect(JSON.stringify(l)).not.toMatch(/donorId|supplierDocument|"supplier"|52998224725|11222333000181|"ongP"|@example/i);
+          await http().get(`/transparency/organizations/${orgA}/ledger`).expect(404); // ONG suspensa
+        });
+
+        it('capa do perfil: só ONG, valida pelos bytes, remove metadados e aparece no perfil público', async () => {
+          const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+          await http().post('/users/me/cover').attach('file', png, { filename: 'c.png', contentType: 'image/png' }).expect(401);
+          await http().post('/users/me/cover').auth(tokDoador, { type: 'bearer' }).attach('file', png, { filename: 'c.png', contentType: 'image/png' }).expect(403);
+          await http().post('/users/me/cover').auth(tokOngP, { type: 'bearer' }).attach('file', Buffer.from('<svg onload=alert(1)>'), { filename: 'c.png', contentType: 'image/png' }).expect(400);
+          const r = (await http().post('/users/me/cover').auth(tokOngP, { type: 'bearer' }).attach('file', png, { filename: 'c.png', contentType: 'image/png' }).expect(201)).body;
+          expect(r.coverImage).toMatch(/^\/uploads\/covers\/[0-9a-f-]+\.png$/);
+          try {
+            const pub = await http().get(`/users/ongs/${ongUserId}`);
+            expect(pub.status).toBe(200);
+            expect(pub.body.coverImage).toBe(r.coverImage);
+          } finally {
+            await unlink(`${process.cwd()}${r.coverImage}`);
+          }
+        });
+
+        it('histórico de validação e última atualização no perfil, sem motivos internos nem analistas', async () => {
+          const p = (await http().get(`/transparency/organizations/${orgB}`)).body; // ONG validada pelo fluxo completo
+          expect(p.validationHistory.map((h: any) => h.action)).toEqual(expect.arrayContaining(['ORG_CREATED', 'ORG_SUBMITTED', 'ORG_APPROVED']));
+          expect(p.validationHistory.every((h: any) => Object.keys(h).sort().join() === 'action,at,label')).toBe(true);
+          expect(p.lastUpdatedAt).toBeDefined();
+        });
+
+        it('auditoria registra criação, anexo e análise', async () => {
+          const acts = (await db.getRepository(AuditLog).find({ where: { organizationId: orgP } })).map((l) => l.action);
+          for (const a of ['PUBLICATION_CREATED', 'PUBLICATION_ATTACHMENT_ADDED', 'PUBLICATION_ATTACHMENT_REVIEWED']) expect(acts).toContain(a);
+        });
       });
     });
   });

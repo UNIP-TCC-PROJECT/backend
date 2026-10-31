@@ -5,6 +5,7 @@
   "category",
   "city",
   "cnpj",
+  "coverImage",
   "createdAt",
   "description",
   "email",

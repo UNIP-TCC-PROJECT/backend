@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -95,6 +95,15 @@ export class TransparencyController {
 
   @Get('organizations/:id')
   profile(@Param('id', ParseUUIDPipe) id: string) { return this.svc.profile(id); }
+
+  @Get('organizations/:id/ledger')
+  ledger(@Param('id', ParseUUIDPipe) id: string) { return this.svc.ledger(id); }
+
+  @Get('by-owner/:userId')
+  byOwner(@Param('userId', ParseIntPipe) userId: number) { return this.svc.byOwner(userId); }
+
+  @Get('publications/:id/accountability')
+  publicationAccountability(@Param('id', ParseIntPipe) id: number) { return this.svc.publicationAccountability(id); }
 
   @Get('expense-documents/:id/file')
   async doc(@Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: any) {

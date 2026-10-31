@@ -122,6 +122,10 @@ status!: UserStatus;
   @Column({ nullable: true })
   profileImage?: string;
 
+  // Capa do perfil público da ONG (institucional; sem metadados).
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  coverImage?: string | null;
+
   @Column({ nullable: true })
   category?: string;
 

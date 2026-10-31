@@ -1,5 +1,5 @@
 {
- "total": 114,
+ "total": 125,
  "publicas": [
   "GET /campaigns",
   "GET /campaigns/:id",
@@ -8,10 +8,14 @@
   "GET /organizations/public/:id",
   "GET /publicacoes",
   "GET /publicacoes/:id",
+  "GET /publicacoes/anexos/:id/file",
   "GET /publicacoes/ong/:ongId",
+  "GET /transparency/by-owner/:userId",
   "GET /transparency/evidences/:id/file",
   "GET /transparency/expense-documents/:id/file",
   "GET /transparency/organizations/:id",
+  "GET /transparency/organizations/:id/ledger",
+  "GET /transparency/publications/:id/accountability",
   "GET /users/:ongId/reviews",
   "GET /users/ongs",
   "GET /users/ongs/:id",
@@ -106,6 +110,14 @@
    "rota": "POST /users/me/avatar",
    "guards": [
     "JwtAuthGuard"
+   ],
+   "roles": null
+  },
+  {
+   "rota": "POST /users/me/cover",
+   "guards": [
+    "JwtAuthGuard",
+    "OngGuard"
    ],
    "roles": null
   },
@@ -753,6 +765,21 @@
    "roles": null
   },
   {
+   "rota": "GET /transparency/organizations/:id/ledger",
+   "guards": [],
+   "roles": null
+  },
+  {
+   "rota": "GET /transparency/by-owner/:userId",
+   "guards": [],
+   "roles": null
+  },
+  {
+   "rota": "GET /transparency/publications/:id/accountability",
+   "guards": [],
+   "roles": null
+  },
+  {
    "rota": "GET /transparency/expense-documents/:id/file",
    "guards": [],
    "roles": null
@@ -851,6 +878,30 @@
    "roles": null
   },
   {
+   "rota": "GET /publicacoes/mine",
+   "guards": [
+    "JwtAuthGuard",
+    "OngGuard"
+   ],
+   "roles": null
+  },
+  {
+   "rota": "POST /publicacoes/:id/anexos",
+   "guards": [
+    "JwtAuthGuard",
+    "OngGuard"
+   ],
+   "roles": null
+  },
+  {
+   "rota": "GET /publicacoes/mine/anexos/:id/file",
+   "guards": [
+    "JwtAuthGuard",
+    "OngGuard"
+   ],
+   "roles": null
+  },
+  {
    "rota": "GET /publicacoes",
    "guards": [],
    "roles": null
@@ -861,9 +912,44 @@
    "roles": null
   },
   {
+   "rota": "GET /publicacoes/anexos/:id/file",
+   "guards": [],
+   "roles": null
+  },
+  {
    "rota": "GET /publicacoes/:id",
    "guards": [],
    "roles": null
+  },
+  {
+   "rota": "GET /admin/publication-attachments",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "GET /admin/publication-attachments/:id/file",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "POST /admin/publication-attachments/:id/review",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
   },
   {
    "rota": "POST /users/:ongId/reviews",

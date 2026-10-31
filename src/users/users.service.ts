@@ -89,6 +89,13 @@ export class UsersService {
     return sanitizeUser(user);
   }
 
+  async updateCoverImage(userId: number, coverImage: string) {
+    const user = await this.repo.findOne({ where: { id: userId, type: UserType.ONG }, select: ['id'] });
+    if (!user) throw new NotFoundException('ONG não encontrada');
+    await this.repo.update(userId, { coverImage });
+    return { coverImage };
+  }
+
   async updateProfileImage(userId: number, profileImage: string) {
     const user = await this.repo.findOne({ where: { id: userId } });
     if (!user) {
@@ -118,6 +125,7 @@ export class UsersService {
         'website',
         'pixKey',
         'profileImage',
+        'coverImage',
         'category',
         'city',
         'state',
@@ -148,6 +156,7 @@ export class UsersService {
         'website',
         'pixKey',
         'profileImage',
+        'coverImage',
         'category',
         'city',
         'state',

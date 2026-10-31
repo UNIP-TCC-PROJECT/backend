@@ -6,6 +6,7 @@ import { Meta } from '../metas/entities/meta.entity';
 import { Medalha } from '../medalhas/entities/medalha.entity';
 import { Denuncia } from '../denuncias/entities/denuncia.entity';
 import { Publicacao } from '../publicacoes/entities/publicacao.entity';
+import { PublicacaoAnexo } from '../publicacoes/entities/publicacao-anexo.entity';
 import { Interesse } from '../interesses/entities/interesse.entity';
 import { Conversa } from '../conversas/entities/conversa.entity';
 import { Mensagem } from '../conversas/entities/mensagem.entity';
@@ -30,6 +31,7 @@ export const ENTITIES = [
   Medalha,
   Denuncia,
   Publicacao,
+  PublicacaoAnexo,
   Favorito,
   Interesse,
   Conversa,

@@ -19,6 +19,7 @@ import { memoryStorage } from 'multer';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { detectImage } from '../common/file-upload';
+import { stripImageMetadata } from '../common/sanitize';
 import { randomUUID } from 'crypto';
 
 import { UsersService } from './users.service';
@@ -94,6 +95,24 @@ export class UsersController {
     const url = `/uploads/avatars/${name}`;
     await this.usersService.updateProfileImage(req.user.id, url);
     return { profileImage: url };
+  }
+
+  @Post('me/cover')
+  @UseGuards(JwtAuthGuard, OngGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 3 * 1024 * 1024, files: 1, fields: 0 },
+    }),
+  )
+  async uploadCover(@UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    const kind = detectImage(file.buffer);
+    if (!kind) throw new BadRequestException('Formato inválido. Envie JPG, PNG ou WebP.');
+    const name = `${randomUUID()}.${kind.ext}`;
+    await mkdir(join(process.cwd(), 'uploads', 'covers'), { recursive: true });
+    await writeFile(join(process.cwd(), 'uploads', 'covers', name), stripImageMetadata(file.buffer, kind.mime));
+    return this.usersService.updateCoverImage(req.user.id, `/uploads/covers/${name}`);
   }
 
   @Get('admin-test')
