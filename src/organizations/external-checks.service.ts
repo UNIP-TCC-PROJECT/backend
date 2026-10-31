@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import { Repository } from 'typeorm';
 import { onlyDigits, normalizeText } from './cnpj.util';
 import { CheckSource, CheckStatus, OrganizationExternalCheck } from './entities/organization-external-check.entity';
@@ -9,14 +9,39 @@ import { Organization } from './entities/organization.entity';
 type Result = Pick<OrganizationExternalCheck, 'status' | 'summary' | 'findings' | 'data' | 'httpStatus'>;
 
 const TIMEOUT_MS = 8000;
-const BRASILAPI = process.env.BRASILAPI_URL ?? 'https://brasilapi.com.br/api/cnpj/v1';
-const MAPA_OSC = process.env.MAPA_OSC_URL ?? 'https://mapaosc.ipea.gov.br/api/cnpj';
-const PORTAL = process.env.PORTAL_TRANSPARENCIA_URL ?? 'https://api.portaldatransparencia.gov.br/api-de-dados';
-const TRANSFEREGOV = process.env.TRANSFEREGOV_URL ?? 'https://api-publica.transferegov.gestao.gov.br/parcerias';
+// URLs lidas a cada uso: o ConfigModule só carrega o .env depois que este arquivo é importado.
+const url = {
+  brasilapi: () => process.env.BRASILAPI_URL ?? 'https://brasilapi.com.br/api/cnpj/v1',
+  // O Mapa das OSCs é uma API Lumen publicada sob /api/api; a rota /api/cnpj/{cnpj} do Swagger não existe (404).
+  mapaOsc: () => process.env.MAPA_OSC_URL ?? 'https://mapaosc.ipea.gov.br/api/api/busca/cnpj',
+  portal: () => process.env.PORTAL_TRANSPARENCIA_URL ?? 'https://api.portaldatransparencia.gov.br/api-de-dados',
+  transferegov: () => process.env.TRANSFEREGOV_URL ?? 'https://api-publica.transferegov.gestao.gov.br/parcerias',
+};
 
 // CNAEs (divisões) típicos do terceiro setor — apenas informativo para o analista.
 const CNAE_TERCEIRO_SETOR = ['85', '86', '87', '88', '90', '91', '93', '94'];
 const NATUREZA_OK = /associa[cç][aã]o|funda[cç][aã]o|organiza[cç][aã]o (religiosa|social)|entidade/i;
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** GET com uma retentativa para falha de rede, 429 e 5xx. Nunca lança por status HTTP; erros de rede só na 2ª falha. */
+async function get(target: string, config: AxiosRequestConfig = {}) {
+  // User-Agent próprio: algumas fontes (ex.: BrasilAPI) bloqueiam agentes genéricos como "node".
+  const opts = { timeout: TIMEOUT_MS, validateStatus: () => true, ...config, headers: { 'User-Agent': 'donatio-tcc/1.0', ...config.headers } };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await axios.get(target, opts);
+      if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
+        await wait(Math.min(Number(res.headers?.['retry-after']) * 1000 || 500, 3000));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (attempt === 0) { await wait(500); continue; }
+      throw e;
+    }
+  }
+}
 
 const unavailable = (summary: string, httpStatus: number | null = null): Result => ({
   status: CheckStatus.INDISPONIVEL, summary, findings: [], data: null, httpStatus,
@@ -67,7 +92,10 @@ export class ExternalChecksService {
 
   // ---------- BrasilAPI: cadastro na Receita x dados informados ----------
   private async brasilApi(org: Organization): Promise<Result> {
-    const res = await axios.get(`${BRASILAPI}/${org.cnpj}`, { timeout: TIMEOUT_MS, validateStatus: () => true });
+    const res = await get(`${url.brasilapi()}/${org.cnpj}`);
+    if (res.status === 400) {
+      return { status: CheckStatus.ALERTA, summary: 'CNPJ recusado como inválido pela BrasilAPI (dígitos verificadores).', findings: ['CNPJ inválido'], data: null, httpStatus: 400 };
+    }
     if (res.status === 404) {
       return { status: CheckStatus.ALERTA, summary: 'CNPJ não encontrado na base da Receita (via BrasilAPI).', findings: ['CNPJ inexistente'], data: null, httpStatus: 404 };
     }
@@ -107,27 +135,33 @@ export class ExternalChecksService {
   }
 
   // ---------- Mapa das OSCs (complementar) ----------
+  // A rota é uma busca por prefixo de CNPJ: só vale o registro cujo CNPJ é exatamente o consultado.
+  // 404 aqui significa rota alterada/removida (a rota existe e responde 200 com lista), nunca "OSC ausente".
   private async mapaOsc(org: Organization): Promise<Result> {
-    const res = await axios.get(`${MAPA_OSC}/${org.cnpj}`, { timeout: TIMEOUT_MS, validateStatus: () => true });
-    if (res.status === 404) {
-      return { status: CheckStatus.NAO_ENCONTRADO, summary: 'Sem registro no Mapa das OSCs. A ausência é neutra e não indica irregularidade.', findings: [], data: null, httpStatus: 404 };
-    }
+    const res = await get(`${url.mapaOsc()}/${org.cnpj}`);
     if (res.status !== 200 || !Array.isArray(res.data)) return unavailable(`Mapa das OSCs indisponível ou em formato inesperado (HTTP ${res.status}).`, res.status);
-    return res.data.length
-      ? { status: CheckStatus.OK, summary: 'Organização localizada no Mapa das OSCs.', findings: [], data: { resultados: res.data.slice(0, 5) }, httpStatus: 200 }
-      : { status: CheckStatus.NAO_ENCONTRADO, summary: 'Sem registro no Mapa das OSCs. A ausência é neutra e não indica irregularidade.', findings: [], data: null, httpStatus: 200 };
+    const osc = res.data.find((o: any) => onlyDigits(o?.cd_identificador_osc) === org.cnpj);
+    if (!osc) {
+      return { status: CheckStatus.NAO_ENCONTRADO, summary: 'Sem registro no Mapa das OSCs. A ausência é neutra e não indica irregularidade.', findings: [], data: null, httpStatus: 200 };
+    }
+    return {
+      status: CheckStatus.OK, summary: 'Organização localizada no Mapa das OSCs.', findings: [], httpStatus: 200,
+      data: { resultados: [{ id_osc: osc.id_osc, razao_social: osc.tx_razao_social_osc, natureza_juridica: osc.tx_nome_natureza_juridica_osc, fundacao: osc.dt_fundacao_osc, municipio: osc.tx_nome_municipio, uf: osc.tx_sigla_uf, situacao_cadastral: osc.cd_situacao_cadastral }] },
+    };
   }
 
   // ---------- Portal da Transparência: CEIS, CNEP e CEPIM (exige chave) ----------
   private async portalTransparencia(org: Organization): Promise<Result> {
     const key = process.env.PORTAL_TRANSPARENCIA_API_KEY;
     if (!key) return unavailable('Chave da API do Portal da Transparência não configurada (PORTAL_TRANSPARENCIA_API_KEY).');
+    // 401/403 = chave inválida/revogada: mensagem própria, sem ecoar a chave.
 
     const query = (path: string, param: string) =>
-      axios.get(`${PORTAL}/${path}`, { params: { [param]: org.cnpj, pagina: 1 }, headers: { 'chave-api-dados': key }, timeout: TIMEOUT_MS, validateStatus: () => true });
+      get(`${url.portal()}/${path}`, { params: { [param]: org.cnpj, pagina: 1 }, headers: { 'chave-api-dados': key } });
     const lists = { CEIS: await query('ceis', 'codigoSancionado'), CNEP: await query('cnep', 'codigoSancionado'), CEPIM: await query('cepim', 'cnpjSancionado') };
 
     const failed = Object.entries(lists).filter(([, r]) => r.status !== 200 || !Array.isArray(r.data));
+    if (failed.some(([, r]) => r.status === 401 || r.status === 403)) return unavailable('Portal da Transparência recusou a chave de API (verifique PORTAL_TRANSPARENCIA_API_KEY).', failed[0][1].status);
     if (failed.length) return unavailable(`Portal da Transparência indisponível para ${failed.map(([n, r]) => `${n} (HTTP ${r.status})`).join(', ')}.`, failed[0][1].status);
 
     const findings = Object.entries(lists)
@@ -144,8 +178,8 @@ export class ExternalChecksService {
 
   // ---------- Transferegov (parcerias públicas; informativo) ----------
   private async transferegov(org: Organization): Promise<Result> {
-    const get = (param: string) => axios.get(`${TRANSFEREGOV}/proposta`, { params: { [param]: org.cnpj, tamanho_da_pagina: 5, pagina: 1 }, timeout: TIMEOUT_MS, validateStatus: () => true });
-    const [exec, rec] = await Promise.all([get('cnpj_executor'), get('cnpj_ente_recebedor')]);
+    const query = (param: string) => get(`${url.transferegov()}/proposta`, { params: { [param]: org.cnpj, tamanho_da_pagina: 5, pagina: 1 } });
+    const [exec, rec] = await Promise.all([query('cnpj_executor'), query('cnpj_ente_recebedor')]);
     if ([exec, rec].some((r) => r.status !== 200 || !Array.isArray(r.data?.data))) {
       return unavailable(`Transferegov indisponível (HTTP ${exec.status}/${rec.status}).`, exec.status);
     }

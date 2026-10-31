@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
@@ -21,6 +21,8 @@ const addDays = (d: number) => new Date(Date.now() + d * 86400_000).toISOString(
 
 @Injectable()
 export class DonationsService {
+  private readonly logger = new Logger(DonationsService.name);
+
   constructor(
     @InjectRepository(Donation) private repo: Repository<Donation>,
     @InjectRepository(Campaign) private campaigns: Repository<Campaign>,
@@ -71,6 +73,7 @@ export class DonationsService {
     await this.audit.log({ actor: donor, action: 'DONATION_CREATED', entityType: 'donation', entityId: d.id, organizationId: c.organizationId, metadata: { amountCents: d.amountCents, campaignId }, ip });
 
     // 2) cria a cobrança Pix; se o provedor falhar, a doação não fica "fantasma" pendente
+    let providerPaymentId: string | null = null;
     try {
       const customerId = user.asaasCustomerId ?? (await this.asaas.createCustomer({ name: user.name, cpfCnpj: cpf, email: user.email, externalReference: `donor-${user.id}` })).id;
       if (!user.asaasCustomerId) await this.users.update(user.id, { asaasCustomerId: customerId });
@@ -78,10 +81,15 @@ export class DonationsService {
         customer: customerId, value: d.amountCents / 100, dueDate: addDays(1),
         description: `Doação — ${c.title}`.slice(0, 200), externalReference: d.id,
       });
+      // Vincula já: qualquer evento futuro desta cobrança precisa achar a doação, mesmo que o QR Code falhe depois.
+      providerPaymentId = payment.id;
+      await this.repo.update(d.id, { providerPaymentId });
       const qr = await this.asaas.getPixQrCode(payment.id);
-      await this.repo.update(d.id, { providerPaymentId: payment.id, pixPayload: qr.payload, pixExpiresAt: qr.expirationDate ? new Date(qr.expirationDate) : null });
+      await this.repo.update(d.id, { pixPayload: qr.payload, pixExpiresAt: qr.expirationDate ? new Date(qr.expirationDate) : null });
       return { ...this.view({ ...d, pixPayload: qr.payload, pixExpiresAt: qr.expirationDate ? new Date(qr.expirationDate) : null } as Donation), pix: { payload: qr.payload, qrCodeBase64: qr.encodedImage, expiresAt: qr.expirationDate } };
     } catch (e) {
+      // A cobrança já criada no provedor não pode ficar pagável sem doação ativa: tenta removê-la.
+      if (providerPaymentId) await this.asaas.deletePayment(providerPaymentId).catch((err) => this.logger.error(`Cobrança ${providerPaymentId} não pôde ser cancelada no provedor: ${(err as Error).message}`));
       await this.repo.update(d.id, { status: DonationStatus.CANCELADA, failureReason: 'Falha ao criar cobrança no provedor' });
       await this.audit.log({ actor: donor, action: 'DONATION_CANCELLED', entityType: 'donation', entityId: d.id, organizationId: c.organizationId, metadata: { reason: 'provider_error' }, ip });
       throw e;

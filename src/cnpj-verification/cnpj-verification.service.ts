@@ -67,28 +67,36 @@ async consultarCnpj(cnpj: string, nomeInformado?: string) {
     );
   }
 
+  const base = process.env.OPENCNPJ_URL ?? 'https://api.opencnpj.org';
   let response;
 
-  try {
-    response = await axios.get(
-      `https://api.opencnpj.org/${cnpjLimpo}`,
-      {
-        timeout: 10000,
-      },
-    );
-  } catch (error: any) {
-    if (error.response?.status === 404) {
-      throw new BadRequestException(
-        'CNPJ não encontrado.',
+  // Uma retentativa para falha de rede/5xx/429; 400 e 404 são respostas definitivas da fonte.
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      response = await axios.get(`${base}/${cnpjLimpo}`, { timeout: 10000, validateStatus: () => true });
+    } catch {
+      response = undefined;
+    }
+    const status = response?.status;
+    if (status === 404) throw new BadRequestException('CNPJ não encontrado.');
+    if (status === 400) throw new BadRequestException('CNPJ inválido.');
+    if (status === 200) break;
+    if (tentativa === 1) {
+      throw new ServiceUnavailableException(
+        'Não foi possível consultar o CNPJ no momento. Tente novamente mais tarde.',
       );
     }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
+  const data = response!.data;
+
+  // Resposta fora do formato ou de outro CNPJ: a fonte é tratada como indisponível, nunca aprova.
+  if (!data || typeof data !== 'object' || String(data.cnpj ?? '').replace(/\D/g, '') !== cnpjLimpo) {
     throw new ServiceUnavailableException(
       'Não foi possível consultar o CNPJ no momento. Tente novamente mais tarde.',
     );
   }
-
-  const data = response.data;
 
     const cnpjEncontrado = true;
 

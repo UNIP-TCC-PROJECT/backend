@@ -23,7 +23,7 @@ export class AsaasService {
     return process.env.ASAAS_ENV === 'production' ? URLS.production : URLS.sandbox;
   }
 
-  private async call<T>(method: 'get' | 'post', path: string, data?: object): Promise<T> {
+  private async call<T>(method: 'get' | 'post' | 'delete', path: string, data?: object): Promise<T> {
     const key = process.env.ASAAS_API_KEY;
     if (!key) throw new ServiceUnavailableException('Pagamentos indisponíveis: ASAAS_API_KEY não configurada.');
     const config: AxiosRequestConfig = {
@@ -72,5 +72,11 @@ export class AsaasService {
   async getPixQrCode(id: string) {
     const d = await this.call<{ encodedImage: string; payload: string; expirationDate: string }>('get', `/payments/${encodeURIComponent(id)}/pixQrCode`);
     return this.expect<typeof d>(d, typeof d?.payload === 'string' && d.payload.length > 10);
+  }
+
+  /** Cancela (remove) uma cobrança ainda não paga, para que ela não possa ser quitada sem doação correspondente. */
+  async deletePayment(id: string) {
+    const d = await this.call<{ deleted?: boolean }>('delete', `/payments/${encodeURIComponent(id)}`);
+    return this.expect<{ deleted: boolean }>(d, d?.deleted === true);
   }
 }

@@ -61,7 +61,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
         const cnpj = url.split('/').pop()!;
         return res(200, receita(cnpj, brasil === 'divergente' ? 'OUTRA EMPRESA LTDA' : `ONG ${cnpj}`));
       }
-      if (url.includes('mapaosc')) return res(404, '<html>');
+      if (url.includes('mapaosc')) return res(200, []); // rota real: busca por prefixo, lista vazia = sem registro
       if (url.includes('portaldatransparencia')) return res(200, portalAlerta && url.endsWith('/ceis') ? [{ id: 1 }] : []);
       if (url.includes('transferegov')) return res(200, { data: [], total_items: 0 });
       throw new Error(`URL externa inesperada: ${url}`);
@@ -72,7 +72,7 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
 
   // Asaas simulado em memória: o teste controla o "status real" de cada cobrança.
   const WEBHOOK_TOKEN = 'w'.repeat(40);
-  const asaas = { payments: new Map<string, any>(), seq: 0, failCreate: false, created: 0 };
+  const asaas = { payments: new Map<string, any>(), seq: 0, failCreate: false, failQr: false, created: 0, deleted: [] as string[] };
   const installAsaas = () => {
     process.env.ASAAS_API_KEY = 'chave-sandbox-teste';
     process.env.ASAAS_WEBHOOK_TOKEN = WEBHOOK_TOKEN;
@@ -91,6 +91,8 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       const m = path.match(/^\/payments\/([\w]+)(\/pixQrCode)?$/);
       const pay = m && asaas.payments.get(m[1]);
       if (!pay) return res(404, {});
+      if (cfg.method === 'delete') { asaas.deleted.push(pay.id); asaas.payments.delete(pay.id); return res(200, { deleted: true, id: pay.id }); }
+      if (m![2] && asaas.failQr) return res(400, { errors: [{ description: 'Chave Pix não cadastrada' }] });
       return res(200, m![2] ? { encodedImage: 'iVBORw0KGgo=', payload: `000201PIX${pay.id}`, expirationDate: '2099-01-01 23:59:59' } : pay);
     });
   };
@@ -406,6 +408,15 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       asaas.failCreate = false;
       const mine = (await http().get('/my/donations').auth(tokDoador, { type: 'bearer' })).body;
       expect(mine.find((d: any) => d.amountCents === 6000)).toMatchObject({ status: 'CANCELADA' });
+    });
+
+    it('QR Code falha depois da cobrança criada: doação cancelada e cobrança removida no provedor (não fica pagável)', async () => {
+      asaas.failQr = true;
+      await doar(6100).expect(502);
+      asaas.failQr = false;
+      const d = (await http().get('/my/donations').auth(tokDoador, { type: 'bearer' })).body.find((x: any) => x.amountCents === 6100);
+      expect(d).toMatchObject({ status: 'CANCELADA' });
+      expect(asaas.deleted).toContain(await providerId(d.id));
     });
 
     describe('webhook', () => {
