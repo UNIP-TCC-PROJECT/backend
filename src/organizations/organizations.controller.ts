@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -8,7 +22,13 @@ import { fileResponse, singleFileUpload } from '../common/file-upload';
 import { actorOf } from '../common/request-context';
 import { UserType } from '../users/entities/user.entity';
 import { OrganizationStatus } from './entities/organization.entity';
-import { ReasonDto, RequestDocumentsDto, ReviewDto, UpdateOrganizationDto, UploadDocumentDto } from './organizations.dto';
+import {
+  ReasonDto,
+  RequestDocumentsDto,
+  ReviewDto,
+  UpdateOrganizationDto,
+  UploadDocumentDto,
+} from './organizations.dto';
 import { OrganizationsService } from './organizations.service';
 
 @Controller('organizations/public')
@@ -38,13 +58,15 @@ export class OrganizationsController {
   }
 
   @Patch('me')
-  @Roles(UserType.ONG) @UseGuards(OngGuard)
+  @Roles(UserType.ONG)
+  @UseGuards(OngGuard)
   update(@Req() req: any, @Body() dto: UpdateOrganizationDto) {
     return this.svc.updateMine(actorOf(req), dto, req.ip);
   }
 
   @Post('me/submit')
-  @Roles(UserType.ONG) @UseGuards(OngGuard)
+  @Roles(UserType.ONG)
+  @UseGuards(OngGuard)
   submit(@Req() req: any) {
     return this.svc.submit(actorOf(req), req.ip);
   }
@@ -56,16 +78,25 @@ export class OrganizationsController {
   }
 
   @Post('me/documents')
-  @Roles(UserType.ONG) @UseGuards(OngGuard)
+  @Roles(UserType.ONG)
+  @UseGuards(OngGuard)
   @UseInterceptors(FileInterceptor('file', singleFileUpload))
-  upload(@Req() req: any, @Body() dto: UploadDocumentDto, @UploadedFile() file?: Express.Multer.File) {
+  upload(
+    @Req() req: any,
+    @Body() dto: UploadDocumentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     return this.svc.uploadDocument(actorOf(req), dto, file, req.ip);
   }
 
   // ONG dona do documento ou administrador.
   @Get('documents/:id/file')
   @Roles(UserType.ONG, UserType.ADMIN)
-  async download(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: any) {
+  async download(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: any,
+  ) {
     return fileResponse(res, await this.svc.getDocumentFile(actorOf(req), id));
   }
 }
@@ -78,7 +109,16 @@ export class AdminOrganizationsController {
 
   @Get()
   list(@Query('status') status?: OrganizationStatus) {
-    return this.svc.listAll(status && Object.values(OrganizationStatus).includes(status) ? status : undefined);
+    return this.svc.listAll(
+      status && Object.values(OrganizationStatus).includes(status)
+        ? status
+        : undefined,
+    );
+  }
+
+  @Get('integrations')
+  integrations() {
+    return this.svc.integrations();
   }
 
   @Get(':id')
@@ -87,17 +127,29 @@ export class AdminOrganizationsController {
   }
 
   @Post(':id/decision')
-  decide(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviewDto) {
+  decide(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewDto,
+  ) {
     return this.svc.decide(actorOf(req), id, dto, req.ip);
   }
 
   @Post(':id/suspend')
-  suspend(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+  suspend(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReasonDto,
+  ) {
     return this.svc.suspend(actorOf(req), id, dto.reason, req.ip);
   }
 
   @Post(':id/request-documents')
-  requestDocuments(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequestDocumentsDto) {
+  requestDocuments(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestDocumentsDto,
+  ) {
     return this.svc.requestDocuments(actorOf(req), id, dto, req.ip);
   }
 
@@ -107,7 +159,11 @@ export class AdminOrganizationsController {
   }
 
   @Post('documents/:docId/review')
-  review(@Req() req: any, @Param('docId', ParseUUIDPipe) docId: string, @Body() dto: ReviewDto) {
+  review(
+    @Req() req: any,
+    @Param('docId', ParseUUIDPipe) docId: string,
+    @Body() dto: ReviewDto,
+  ) {
     return this.svc.reviewDocument(actorOf(req), docId, dto, req.ip);
   }
 }
