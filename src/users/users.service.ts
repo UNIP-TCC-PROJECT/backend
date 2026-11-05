@@ -18,6 +18,8 @@ import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
+import { cpfValido } from './cpf-validation';
+import { pixKeyValida } from './pix-key-validation';
 import type { JwtPayload } from '../auth/jwt-payload.interface';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
@@ -38,6 +40,11 @@ export class UsersService {
     if (existingUser) {
       throw new ConflictException('Email já cadastrado');
     }
+    if (data.type === UserType.ONG && !pixKeyValida(data.pixKey)) {
+      throw new BadRequestException(
+        'Informe uma chave PIX válida: CPF, CNPJ, e-mail, celular brasileiro com DDD ou chave aleatória UUID.',
+      );
+    }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
     let medalhaVerde = false;
@@ -54,9 +61,29 @@ export class UsersService {
 
       medalhaVerde = verificacao.verificacao.medalhaVerde;
     }
+    if (data.type === UserType.ONG && !cpfValido(data.legalCpf)) {
+      throw new BadRequestException('O CPF do responsável legal é inválido.');
+    }
+
+    if (data.type === UserType.DOADOR && !cpfValido(data.cpf)) {
+      throw new BadRequestException('O CPF informado é inválido.');
+    }
+
+    const pixKeyInformada = data.pixKey?.trim();
+    const telefoneCelularNacional = pixKeyInformada
+      ? /^(?:[1-9]\d9\d{8}|\([1-9]\d\)\s?9\d{4}-?\d{4})$/.test(
+          pixKeyInformada,
+        )
+      : false;
+    const pixKeyNormalizada = telefoneCelularNacional
+      ? `+55${pixKeyInformada.replace(/\D/g, '')}`
+      : pixKeyInformada;
 
     const user = this.repo.create({
       ...data,
+      ...(data.type === UserType.ONG && pixKeyNormalizada
+        ? { pixKey: pixKeyNormalizada }
+        : {}),
       password: hashedPassword,
       status: UserStatus.ATIVO,
       medalhaVerde,
@@ -243,11 +270,7 @@ export class UsersService {
     return result;
   }
 
-  async updateOng(
-    id: number,
-    data: any,
-    requestingUserId: number,
-  ) {
+  async updateOng(id: number, data: any, requestingUserId: number) {
     const ong = await this.repo.findOne({
       where: {
         id,
@@ -260,9 +283,7 @@ export class UsersService {
     }
 
     if (ong.id !== requestingUserId) {
-      throw new ForbiddenException(
-        'Você só pode editar o próprio perfil',
-      );
+      throw new ForbiddenException('Você só pode editar o próprio perfil');
     }
 
     Object.assign(ong, data);
