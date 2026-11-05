@@ -1,5 +1,6 @@
 import { Publicacao } from '../publicacoes/entities/publicacao.entity';
 import { Module } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { Campaign } from '../campaigns/entities/campaign.entity';
@@ -17,7 +18,7 @@ import { Expense, ExpenseDocument } from './entities/expense.entity';
 import { TransparencyService } from './transparency.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Campaign, Donation, Organization, OrganizationDocument, OrganizationExternalCheck, AuditLog, User, Publicacao]), AuthModule, OrganizationsModule],
+  imports: [TypeOrmModule.forFeature([Expense, ExpenseDocument, DeliveryRecord, DeliveryEvidence, Campaign, Donation, Organization, OrganizationDocument, OrganizationExternalCheck, AuditLog, User, Publicacao]), AuthModule, OrganizationsModule, ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }])],
   controllers: [AccountabilityController, TransparencyController],
   providers: [AccountabilityService, TransparencyService],
   exports: [AccountabilityService],

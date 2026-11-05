@@ -1,7 +1,7 @@
 import {
-  Body,
   Controller,
   Get,
+  GoneException,
   Header,
   Param,
   ParseIntPipe,
@@ -10,18 +10,16 @@ import {
   Post,
   Request,
   StreamableFile,
-  UploadedFiles,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OngGuard } from '../auth/ong.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { UserStatus, UserType } from '../users/entities/user.entity';
 import { MedalhaBrancaService } from './medalha-branca.service';
-import { AnalisarMedalhaBrancaDto } from './dto/analisar-medalha-branca.dto';
-import { documentosUpload, MAX_DOCUMENTOS } from './medalha-branca.upload';
+
+const PROGRAMA_ENCERRADO =
+  'O programa da Medalha Branca foi encerrado. A validação institucional agora é feita pelos documentos da instituição.';
 
 type AuthRequest = { user: { id: number; type: UserType; status: UserStatus } };
 
@@ -36,16 +34,11 @@ export class MedalhaBrancaController {
     return this.service.listar(req.user.id);
   }
 
+  // Programa encerrado: novos pedidos e análises não são mais aceitos (o histórico segue consultável).
   @Post('minha')
   @UseGuards(OngGuard)
-  @UseInterceptors(
-    FilesInterceptor('documentos', MAX_DOCUMENTOS, documentosUpload),
-  )
-  solicitar(
-    @Request() req: AuthRequest,
-    @UploadedFiles() files: Express.Multer.File[],
-  ) {
-    return this.service.solicitar(req.user.id, files);
+  solicitar() {
+    throw new GoneException(PROGRAMA_ENCERRADO);
   }
 
   @Get('documentos/:id')
@@ -75,11 +68,7 @@ export class MedalhaBrancaController {
 
   @Patch('admin/:id')
   @UseGuards(AdminGuard)
-  analisar(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req: AuthRequest,
-    @Body() dto: AnalisarMedalhaBrancaDto,
-  ) {
-    return this.service.analisar(id, req.user.id, dto);
+  analisar() {
+    throw new GoneException(PROGRAMA_ENCERRADO);
   }
 }

@@ -30,7 +30,8 @@ import { onlyDigits } from '../organizations/cnpj.util';
 import { Publicacao } from '../publicacoes/entities/publicacao.entity';
 import { CATEGORY_LABEL, Category } from '../publicacoes/publicacoes.constants';
 import { AccountabilityService } from './accountability.service';
-import { evaluateTransparency } from './transparency-level';
+import { evaluateTransparency, LevelInput } from './transparency-level';
+import { evaluateRegistration } from '../organizations/registration-verification';
 import { DeliveryEvidence, DeliveryRecord } from './entities/delivery.entity';
 import { Expense, ExpenseDocument } from './entities/expense.entity';
 
@@ -125,6 +126,20 @@ export interface TimelineEvent {
  *  - evidências pendentes/reprovadas aparecem só como contagem, nunca como conteúdo;
  *  - textos livres passam por máscara de CPF/e-mail/telefone.
  */
+export interface SelosOng {
+  cadastroVerificado:
+    | { verificado: false }
+    | {
+        verificado: true;
+        validadoEm: string | null;
+        consultadoEm: string | null;
+        /** Aprovação administrativa com ressalvas (o motivo fica só no registro interno). */
+        comRessalvas: boolean;
+        criterios: string[];
+      };
+  nivelTransparencia: { nivel: string | null; rotulo: string } | null;
+}
+
 @Injectable()
 export class TransparencyService {
   constructor(
@@ -660,42 +675,19 @@ export class TransparencyService {
     timeline.sort((a, b) => +new Date(b.at) - +new Date(a.at));
 
     // ---- Nível de transparência: calculado dos registros acima; nunca armazenado nem escolhido pela ONG ----
-    const currentDocs = orgDocs.filter((d) => !d.supersededAt);
-    const confirmedAll = await this.donations
-      .createQueryBuilder('d')
-      .innerJoin('d.campaign', 'c', 'c.organizationId = :o', { o: id })
-      .where('d.status = :s', { s: DonationStatus.CONFIRMADA })
-      .select('MIN(d.confirmedAt)', 'first')
-      .getRawOne();
-    const transparencyLevel = evaluateTransparency({
-      now: new Date(),
-      hasReceitaCheck: !!receitaCheck,
-      requiredDocuments: REQUIRED_DOCUMENT_TYPES.map((type) => ({
-        type: DOC_LABEL[type] ?? type,
-        approved: currentDocs.some(
-          (d) => d.type === type && d.status === ReviewStatus.APROVADO,
-        ),
-      })),
-      confirmedRaisedCents: (await this.acc.financials(id)).totalRaisedCents,
-      firstConfirmedAt: confirmedAll?.first
-        ? new Date(confirmedAll.first)
-        : null,
-      approvedExpenses: expenses.map((e) => ({
-        id: e.id,
-        hasApprovedDocument: expDocs.some(
-          (d) => d.expenseId === e.id && d.status === AccStatus.APROVADA,
-        ),
-      })),
-      deliveries: deliveries.map((d) => ({
-        id: d.id,
-        hasApprovedEvidence: approvedEvidences.some(
-          (e) => e.deliveryRecordId === d.id,
-        ),
-      })),
-      lastActivityAt: orgAudit.length
-        ? orgAudit[orgAudit.length - 1].createdAt
-        : null,
-    });
+    const transparencyLevel = evaluateTransparency(
+      await this.levelInput(id, {
+        receitaCheck,
+        orgDocs,
+        expenses,
+        expDocs,
+        approvedEvidences,
+        deliveries,
+        lastActivityAt: orgAudit.length
+          ? orgAudit[orgAudit.length - 1].createdAt
+          : null,
+      }),
+    );
 
     return {
       organization: { ...identification, validatedAt },
@@ -723,6 +715,181 @@ export class TransparencyService {
       notice:
         'Valores calculados automaticamente a partir dos pagamentos confirmados e das despesas aprovadas. Documentos e evidências só aparecem após análise e quando podem ser publicados com segurança. Não há selo ou nota de confiança: avalie as informações e suas fontes.',
     };
+  }
+
+  /**
+   * Monta a entrada do nível a partir de registros já carregados. É o único lugar que faz esse mapeamento:
+   * o perfil completo e o resumo dos selos usam a mesma regra.
+   */
+  private async levelInput(
+    orgId: string,
+    d: {
+      receitaCheck: unknown;
+      orgDocs: Pick<OrganizationDocument, 'type' | 'status' | 'supersededAt'>[];
+      expenses: Pick<Expense, 'id'>[];
+      expDocs: Pick<ExpenseDocument, 'expenseId' | 'status'>[];
+      approvedEvidences: Pick<DeliveryEvidence, 'deliveryRecordId'>[];
+      deliveries: Pick<DeliveryRecord, 'id'>[];
+      lastActivityAt: Date | null;
+    },
+  ): Promise<LevelInput> {
+    const currentDocs = d.orgDocs.filter((x) => !x.supersededAt);
+    const confirmedAll = await this.donations
+      .createQueryBuilder('d')
+      .innerJoin('d.campaign', 'c', 'c.organizationId = :o', { o: orgId })
+      .where('d.status = :s', { s: DonationStatus.CONFIRMADA })
+      .select('MIN(d.confirmedAt)', 'first')
+      .getRawOne();
+    return {
+      now: new Date(),
+      hasReceitaCheck: !!d.receitaCheck,
+      requiredDocuments: REQUIRED_DOCUMENT_TYPES.map((type) => ({
+        type: DOC_LABEL[type] ?? type,
+        approved: currentDocs.some(
+          (x) => x.type === type && x.status === ReviewStatus.APROVADO,
+        ),
+      })),
+      confirmedRaisedCents: (await this.acc.financials(orgId)).totalRaisedCents,
+      firstConfirmedAt: confirmedAll?.first
+        ? new Date(confirmedAll.first)
+        : null,
+      approvedExpenses: d.expenses.map((e) => ({
+        id: e.id,
+        hasApprovedDocument: d.expDocs.some(
+          (x) => x.expenseId === e.id && x.status === AccStatus.APROVADA,
+        ),
+      })),
+      deliveries: d.deliveries.map((x) => ({
+        id: x.id,
+        hasApprovedEvidence: d.approvedEvidences.some(
+          (e) => e.deliveryRecordId === x.id,
+        ),
+      })),
+      lastActivityAt: d.lastActivityAt,
+    };
+  }
+
+  /** Nível de transparência de uma organização aprovada, com o mínimo de leituras (para listagens). */
+  private async levelOf(orgId: string) {
+    const [checks, orgDocs, expenses, expDocs, evidences, deliveries, lastAudit] =
+      await Promise.all([
+        this.latestChecks(orgId),
+        this.orgDocs.find({
+          select: { type: true, status: true, supersededAt: true },
+          where: { organizationId: orgId },
+        }),
+        this.expenses.find({
+          select: { id: true },
+          where: { organizationId: orgId, status: AccStatus.APROVADA },
+        }),
+        this.docs.find({
+          select: { expenseId: true, status: true },
+          where: { organizationId: orgId },
+        }),
+        this.evidences.find({
+          select: { deliveryRecordId: true },
+          where: { organizationId: orgId, status: AccStatus.APROVADA },
+        }),
+        this.deliveries.find({
+          select: { id: true },
+          where: { organizationId: orgId },
+        }),
+        this.auditLogs.findOne({
+          select: { createdAt: true },
+          where: { organizationId: orgId },
+          order: { createdAt: 'DESC' },
+        }),
+      ]);
+    return evaluateTransparency(
+      await this.levelInput(orgId, {
+        receitaCheck: checks.find(
+          (c) => c.source === CheckSource.BRASILAPI && c.data,
+        ),
+        orgDocs,
+        expenses,
+        expDocs,
+        approvedEvidences: evidences,
+        deliveries,
+        lastActivityAt: lastAudit?.createdAt ?? null,
+      }),
+    );
+  }
+
+  /**
+   * Selos públicos de ONGs, por id do usuário-dono. Devolve somente o que a tela precisa para exibir as duas
+   * medalhas — nunca documentos, dados pessoais, justificativas ou detalhes administrativos.
+   * As duas avaliações são independentes e calculadas na hora (atualizam sozinhas).
+   */
+  async selos(ownerIds: number[]) {
+    const orgs = ownerIds.length
+      ? await this.orgs.find({ where: { ownerId: In(ownerIds) } })
+      : [];
+    const byOwner = new Map(orgs.map((o) => [o.ownerId, o]));
+    const result: Record<number, SelosOng> = {};
+    // Em lotes pequenos para não esgotar as conexões do banco.
+    for (let i = 0; i < ownerIds.length; i += 5) {
+      await Promise.all(
+        ownerIds.slice(i, i + 5).map(async (ownerId) => {
+          const org = byOwner.get(ownerId);
+          if (!org) {
+            result[ownerId] = { cadastroVerificado: { verificado: false }, nivelTransparencia: null };
+            return;
+          }
+          const [checks, docs, approval] = await Promise.all([
+            this.latestChecks(org.id),
+            this.orgDocs.find({
+              select: { type: true, status: true, supersededAt: true },
+              where: { organizationId: org.id },
+            }),
+            this.auditLogs.findOne({
+              select: { createdAt: true, metadata: true },
+              where: { organizationId: org.id, action: 'ORG_APPROVED' },
+              order: { createdAt: 'DESC' },
+            }),
+          ]);
+          const cadastral = checks.find(
+            (c) => c.source === CheckSource.BRASILAPI && c.data,
+          );
+          const current = docs.filter((d) => !d.supersededAt);
+          const reg = evaluateRegistration({
+            status: org.status,
+            hasCadastralCheck: !!cadastral,
+            requiredDocuments: REQUIRED_DOCUMENT_TYPES.map((type) => ({
+              type,
+              approved: current.some(
+                (d) => d.type === type && d.status === ReviewStatus.APROVADO,
+              ),
+            })),
+            approvedAt: approval?.createdAt ?? org.reviewedAt ?? null,
+            checkedAt: cadastral?.queriedAt ?? null,
+            approvedWithReservations: Boolean(
+              approval?.metadata?.reservations ||
+                approval?.metadata?.overrideReason,
+            ),
+          });
+          // O nível só existe para organizações aprovadas (as demais não têm perfil público de transparência).
+          const nivel =
+            org.status === OrganizationStatus.APROVADA
+              ? await this.levelOf(org.id)
+              : null;
+          result[ownerId] = {
+            cadastroVerificado: reg.verified
+              ? {
+                  verificado: true,
+                  validadoEm: reg.validatedAt,
+                  consultadoEm: reg.checkedAt,
+                  comRessalvas: reg.withReservations,
+                  criterios: reg.criteria.map((c) => c.label),
+                }
+              : { verificado: false },
+            nivelTransparencia: nivel
+              ? { nivel: nivel.level, rotulo: nivel.levelLabel }
+              : null,
+          };
+        }),
+      );
+    }
+    return result;
   }
 
   /** Liga o perfil da ONG (usuário) à organização aprovada; só devolve se for pública. */

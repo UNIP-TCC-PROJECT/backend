@@ -379,6 +379,9 @@ export class OrganizationsService implements OnModuleInit {
     if (org.status !== OrganizationStatus.EM_ANALISE)
       throw new BadRequestException('A organização não está em análise.');
     const approve = dto.decision === 'APROVAR';
+    // Aprovação manual apesar de divergência/indisponibilidade: registra o que foi ressalvado (a justificativa,
+    // a data e o responsável ficam no mesmo registro de auditoria, imutável).
+    let reservations: Record<string, unknown> | null = null;
     if (approve) {
       const pending = await this.docs.countBy({
         organizationId: id,
@@ -421,6 +424,20 @@ export class OrganizationsService implements OnModuleInit {
           blockers,
         });
       }
+      if (blockers.length) {
+        reservations = {
+          blockers,
+          checks: latest
+            .filter((c) => c.status !== CheckStatus.OK)
+            .map((c) => ({
+              source: c.source,
+              status: c.status,
+              summary: c.summary,
+              findings: c.findings,
+              queriedAt: c.queriedAt,
+            })),
+        };
+      }
     }
     await this.dataSource.transaction(async (m) => {
       await m.update(Organization, id, {
@@ -447,6 +464,7 @@ export class OrganizationsService implements OnModuleInit {
           metadata: {
             reason: dto.reason ?? null,
             overrideReason: dto.overrideReason ?? null,
+            ...(reservations ? { reservations } : {}),
           },
           ip,
         },

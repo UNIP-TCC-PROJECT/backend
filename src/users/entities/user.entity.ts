@@ -51,11 +51,16 @@ status!: UserStatus;
   @Column({ nullable: true })
   cnpj?: string;
 
-  @Column({ default: false })
-  medalhaVerde!: boolean;
+  /**
+   * Resultado da triagem do CNPJ feita no cadastro (histórico). Não é o selo exibido ao público: o "cadastro
+   * verificado" é calculado a partir da validação institucional (ver organizations/registration-verification.ts).
+   */
+  @Column({ name: 'medalhaVerde', default: false })
+  preVerificacaoCnpj!: boolean;
 
-  @Column({ default: false })
-  medalhaBranca!: boolean;
+  /** Aprovação do antigo programa da Medalha Branca (histórico; o programa foi encerrado). */
+  @Column({ name: 'medalhaBranca', default: false })
+  medalhaBrancaLegada!: boolean;
 
   @Column({ nullable: true })
   phone?: string;

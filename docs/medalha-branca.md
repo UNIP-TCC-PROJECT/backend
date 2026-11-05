@@ -1,45 +1,37 @@
-# Medalha Branca
+# Medalha Branca (programa encerrado — somente histórico)
 
-## Uso
+O programa da Medalha Branca foi **encerrado**. A verificação documental passou a ser feita na validação institucional
+(documentos da instituição) e sustenta o **cadastro verificado** (ver `MEDALHAS.md`). Nada do histórico foi apagado.
 
-- ONG ativa: na página **ONGs**, abra **Solicitar Medalha Branca**. Envie de 1 a 5 arquivos PDF, JPG ou PNG de até 5 MB cada.
-- A solicitação passa de `NaoSolicitado` para `Pendente`. O painel mostra os arquivos enviados e permite baixá-los.
-- Administrador: abra uma ONG no painel administrativo. A seção **Análise da Medalha Branca** permite baixar os documentos e aprovar ou recusar. A recusa exige um motivo.
-- O painel da ONG consulta o resultado ao abrir, ao voltar à janela e a cada 30 segundos enquanto estiver aberto. Também há **Atualizar status**.
-- `Recusado` permite novo envio e preserva o histórico. `Pendente` e `Aprovado` bloqueiam novas solicitações. A aprovação marca `User.medalhaBranca` como verdadeiro.
+## O que continua disponível
+- `medalha_branca_pedido` e `medalha_branca_documento` permanecem intactas (pedidos, análises, motivos e arquivos em `bytea`).
+- A coluna `user.medalhaBranca` permanece, e no código o campo se chama `User.medalhaBrancaLegada` (mapeado com `@Column({ name: 'medalhaBranca' })`).
+  Ela é só registro histórico: não aparece em nenhuma API pública e não influencia nenhuma medalha.
+- A ONG vê o próprio histórico no Perfil; o administrador vê o histórico da ONG no painel (somente leitura, com download dos documentos).
 
-## Integração e dados
+## O que foi desativado
+- `POST /medalha-branca/minha` (novo pedido) e `PATCH /medalha-branca/admin/:id` (análise) respondem **410 Gone**, depois de a autenticação e a autorização
+  serem avaliadas. Nada é gravado.
+- Pedidos que estavam `Pendente` quando o programa terminou continuam listados como histórico e não podem mais ser analisados.
+  (Na base atual não há nenhum.)
 
-O frontend adiciona um componente em `Ongs.tsx` e outro em `admin/AdminOngDetails.tsx`. Rotas, autenticação, perfil, avatar e detalhes públicos da ONG mantêm seus componentes e serviços existentes.
-
-O backend usa duas tabelas novas: `medalha_branca_pedido` e `medalha_branca_documento`. A configuração de desenvolvimento existente (`synchronize: true`) cria as tabelas ao iniciar. A entidade antiga `Medalha` permanece intacta. Para ambientes com sincronização desativada, inclua as tabelas em uma migração antes de publicar.
-
-Os documentos são armazenados em `bytea` no PostgreSQL, na mesma transação da solicitação. Isso evita arquivos órfãos e não utiliza o diretório público de fotos. O conteúdo binário é excluído das consultas de status. Inclua essas tabelas nos backups do banco.
-
-A identificação da ONG vem do token, nunca de um campo enviado no formulário. Downloads exigem token da própria ONG ou de administrador. Um bloqueio de transação por ONG e um índice único para pedidos pendentes impedem envios concorrentes duplicados.
-
-## API
-
-Todas as rotas exigem `Authorization: Bearer <token>`.
+## API (todas exigem `Authorization: Bearer <token>`)
 
 | Método | Rota | Acesso |
 | --- | --- | --- |
-| GET | `/medalha-branca/minha` | ONG ativa, próprios pedidos |
-| POST | `/medalha-branca/minha` | ONG ativa; multipart com campo `documentos` repetido |
+| GET | `/medalha-branca/minha` | ONG ativa, próprio histórico |
 | GET | `/medalha-branca/documentos/:id` | Proprietária ou administrador ativo |
 | GET | `/medalha-branca/admin/ongs/:ongId` | Administrador |
-| PATCH | `/medalha-branca/admin/:id` | Administrador ativo; `{ "status": "Aprovado" }` ou `{ "status": "Recusado", "motivo": "..." }` |
+| POST | `/medalha-branca/minha` | ONG ativa — **410** (programa encerrado) |
+| PATCH | `/medalha-branca/admin/:id` | Administrador — **410** (programa encerrado) |
+
+Os downloads usam token da própria ONG ou de administrador, com `Cache-Control: private, no-store`.
 
 ## Verificação
 
-Na pasta do backend:
-
 ```sh
-npm test -- --runInBand
-npm run build
 node node_modules/jest/bin/jest.js --config test/jest-medalha-branca.json --runInBand
 ```
 
-O teste de integração precisa das variáveis de conexão PostgreSQL e `JWT_SECRET`, e pode ser executado dentro do container `nest-api`. Ele cria um schema temporário `teste_medalha_*`, usa contas fictícias e remove o schema ao terminar. Verifica autorização, isolamento entre ONGs, validação de arquivos, concorrência, recusa, reenvio, aprovação, preservação do perfil e upload/exibição de foto. Não modifica os cadastros reais.
-
-No frontend, execute `npm run build` para validar os componentes e a integração.
+O teste cria um schema temporário `teste_medalha_*`, semeia um histórico (pedido recusado e aprovado, com documento) e verifica: histórico preservado e
+ordenado, autorização, isolamento entre ONGs, privacidade dos documentos, **410 sem gravar nada**, e que as APIs públicas não expõem campos de medalha por cor.

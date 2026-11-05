@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -12,9 +10,12 @@ import {
   PedidoMedalhaBranca,
   StatusMedalhaBranca,
 } from './entities/pedido-medalha-branca.entity';
-import { AnalisarMedalhaBrancaDto } from './dto/analisar-medalha-branca.dto';
-import { nomeDocumento, validarDocumentos } from './medalha-branca.upload';
 
+/**
+ * Histórico do antigo programa da Medalha Branca (encerrado). Os pedidos, as análises e os documentos enviados
+ * continuam consultáveis; não há mais envio nem análise de novos pedidos. A validação documental passou a ser
+ * feita na validação institucional (documentos da instituição), que sustenta o "cadastro verificado".
+ */
 @Injectable()
 export class MedalhaBrancaService {
   constructor(private readonly db: DataSource) {}
@@ -38,7 +39,7 @@ export class MedalhaBrancaService {
     return {
       status:
         pedidos[0]?.status ??
-        (ong.medalhaBranca
+        (ong.medalhaBrancaLegada
           ? StatusMedalhaBranca.Aprovado
           : StatusMedalhaBranca.NaoSolicitado),
       solicitacoes: pedidos.map((p) => ({
@@ -50,58 +51,6 @@ export class MedalhaBrancaService {
         documentos: documentos.filter((d) => d.solicitacaoId === p.id),
       })),
     };
-  }
-
-  async solicitar(ongId: number, files: Express.Multer.File[]) {
-    validarDocumentos(files);
-    await this.db.transaction(async (manager) => {
-      // Serializa envios da mesma ONG, inclusive duas abas enviando juntas.
-      const ong = await manager.findOne(User, {
-        where: { id: ongId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (
-        !ong ||
-        ong.type !== UserType.ONG ||
-        ong.status !== UserStatus.ATIVO
-      ) {
-        throw new ForbiddenException(
-          'Somente ONGs ativas podem solicitar a medalha.',
-        );
-      }
-      const atual = await manager.findOne(PedidoMedalhaBranca, {
-        where: { ongId },
-        order: { id: 'DESC' },
-      });
-      if (atual?.status === StatusMedalhaBranca.Pendente) {
-        throw new ConflictException(
-          'Sua solicitação já está pendente de análise.',
-        );
-      }
-      if (ong.medalhaBranca || atual?.status === StatusMedalhaBranca.Aprovado) {
-        throw new ConflictException('Sua ONG já possui a Medalha Branca.');
-      }
-      const pedido = await manager.save(
-        PedidoMedalhaBranca,
-        manager.create(PedidoMedalhaBranca, {
-          ongId,
-          status: StatusMedalhaBranca.Pendente,
-        }),
-      );
-      await manager.save(
-        DocumentoMedalhaBranca,
-        files.map((file) =>
-          manager.create(DocumentoMedalhaBranca, {
-            solicitacaoId: pedido.id,
-            nome: nomeDocumento(file.originalname),
-            tipo: file.mimetype,
-            tamanho: file.buffer.length,
-            conteudo: file.buffer,
-          }),
-        ),
-      );
-    });
-    return this.listar(ongId);
   }
 
   async documento(
@@ -126,52 +75,5 @@ export class MedalhaBrancaService {
       where: { id },
       select: ['id', 'nome', 'tipo', 'tamanho', 'conteudo'],
     });
-  }
-
-  async analisar(id: number, adminId: number, dto: AnalisarMedalhaBrancaDto) {
-    if (
-      ![StatusMedalhaBranca.Aprovado, StatusMedalhaBranca.Recusado].includes(
-        dto.status,
-      )
-    ) {
-      throw new BadRequestException('Decisão inválida.');
-    }
-    const motivo = dto.motivo?.trim() || null;
-    if (dto.status === StatusMedalhaBranca.Recusado && !motivo) {
-      throw new BadRequestException('Informe o motivo da recusa.');
-    }
-    const ongId = await this.db.transaction(async (manager) => {
-      const admin = await manager.findOneBy(User, {
-        id: adminId,
-        type: UserType.ADMIN,
-        status: UserStatus.ATIVO,
-      });
-      if (!admin) throw new ForbiddenException('Administrador sem permissão.');
-      const referencia = await manager.findOneBy(PedidoMedalhaBranca, { id });
-      if (!referencia)
-        throw new NotFoundException('Solicitação não encontrada.');
-      await manager.findOneOrFail(User, {
-        where: { id: referencia.ongId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      const pedido = await manager.findOneOrFail(PedidoMedalhaBranca, {
-        where: { id },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (pedido.status !== StatusMedalhaBranca.Pendente) {
-        throw new ConflictException('Esta solicitação já foi analisada.');
-      }
-      await manager.update(PedidoMedalhaBranca, id, {
-        status: dto.status,
-        motivo,
-        analisadoEm: new Date(),
-        analisadoPor: adminId,
-      });
-      if (dto.status === StatusMedalhaBranca.Aprovado) {
-        await manager.update(User, pedido.ongId, { medalhaBranca: true });
-      }
-      return pedido.ongId;
-    });
-    return this.listar(ongId);
   }
 }

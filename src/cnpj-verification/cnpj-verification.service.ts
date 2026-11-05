@@ -124,7 +124,7 @@ async consultarCnpj(cnpj: string, nomeInformado?: string) {
 
     const analiseCnae = this.analisarCnae(data.cnaes || []);
 
-    const medalhaVerde =
+    const cnpjCompativel =
       cnpjEncontrado &&
       situacaoAtiva &&
       naturezaCompativel &&
@@ -146,7 +146,7 @@ async consultarCnpj(cnpj: string, nomeInformado?: string) {
         cnaeCompativel: analiseCnae.compativel,
         cnaePontuacao: analiseCnae.pontuacao,
         termosCnae: analiseCnae.termosEncontrados,
-        medalhaVerde,
+        cnpjCompativel,
       },
     };
   }

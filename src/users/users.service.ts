@@ -48,7 +48,7 @@ export class UsersService {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
-    let medalhaVerde = false;
+    let preVerificacaoCnpj = false;
 
     if (data.type === UserType.ONG) {
       if (!data.cnpj) {
@@ -60,7 +60,7 @@ export class UsersService {
         data.name,
       );
 
-      medalhaVerde = verificacao.verificacao.medalhaVerde;
+      preVerificacaoCnpj = verificacao.verificacao.cnpjCompativel;
     }
 
     const user = this.repo.create({
@@ -70,7 +70,7 @@ export class UsersService {
       ...(data.bankCode ? { bank: BANKS[data.bankCode] } : { bankCode: null }),
       password: hashedPassword,
       status: UserStatus.ATIVO,
-      medalhaVerde,
+      preVerificacaoCnpj,
     });
 
     const savedUser = await this.repo.save(user);
@@ -133,8 +133,6 @@ export class UsersService {
         'averageRating',
         'totalReviews',
         'status',
-        'medalhaVerde',
-        'medalhaBranca',
       ],
     });
   }
@@ -165,8 +163,6 @@ export class UsersService {
         'averageRating',
         'totalReviews',
         'status',
-        'medalhaVerde',
-        'medalhaBranca',
       ],
     });
 
@@ -245,7 +241,7 @@ export class UsersService {
       );
     }
 
-    // O CNPJ foi verificado no cadastro (e sustenta as medalhas): trocá-lo exige nova validação pela administração.
+    // O CNPJ foi verificado no cadastro (e sustenta o cadastro verificado): trocá-lo exige nova validação pela administração.
     if (data?.cnpj !== undefined && String(data.cnpj).replace(/\D/g, '') !== String(ong.cnpj ?? '').replace(/\D/g, '')) {
       throw new BadRequestException('O CNPJ não pode ser alterado. Solicite a alteração à administração da plataforma.');
     }

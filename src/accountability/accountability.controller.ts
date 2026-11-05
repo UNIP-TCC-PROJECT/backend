@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -88,10 +89,28 @@ export class AccountabilityController {
   reviewEvidence(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviewActionDto) { return this.svc.reviewEvidence(actorOf(req), id, dto, req.ip); }
 }
 
+export const MAX_SELOS_IDS = 50;
+
+/** Valida a lista de ids do endpoint público de selos: só inteiros positivos, sem repetição, no máximo MAX_SELOS_IDS. */
+export function parseOwnerIds(raw: unknown): number[] {
+  if (typeof raw !== 'string' || !raw.trim()) throw new BadRequestException('Informe ownerIds (ids separados por vírgula).');
+  const parts = raw.split(',').map((x) => x.trim());
+  if (parts.length > MAX_SELOS_IDS * 2 || parts.some((x) => !/^[1-9]\d{0,8}$/.test(x))) throw new BadRequestException('ownerIds inválido: use inteiros positivos separados por vírgula.');
+  const ids = [...new Set(parts.map(Number))];
+  if (ids.length > MAX_SELOS_IDS) throw new BadRequestException(`Informe no máximo ${MAX_SELOS_IDS} ids por consulta.`);
+  return ids;
+}
+
 // Público (sem login): somente o que foi aprovado e marcado como publicável.
 @Controller('transparency')
 export class TransparencyController {
   constructor(private svc: TransparencyService) {}
+
+  // Selos para cards e perfil. Resposta mínima (sem documentos, dados pessoais ou justificativas) e com limite de consultas.
+  @Get('selos')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  selos(@Query('ownerIds') ownerIds?: unknown) { return this.svc.selos(parseOwnerIds(ownerIds)); }
 
   @Get('organizations/:id')
   profile(@Param('id', ParseUUIDPipe) id: string) { return this.svc.profile(id); }

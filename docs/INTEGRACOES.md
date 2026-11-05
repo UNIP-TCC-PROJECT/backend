@@ -20,7 +20,7 @@ Testes automatizados (`npx jest`, `test/*.e2e-spec.ts`) usam fontes **simuladas*
 - **BrasilAPI** `GET /api/cnpj/v1/{cnpj}` — 200 com cadastro; 400 = CNPJ inválido (registrado como ALERTA); 404 = inexistente (ALERTA).
   Bloqueia o User-Agent genérico `node` (403): o backend envia `User-Agent: donatio-tcc/1.0`.
 - **OpenCNPJ** `GET https://api.opencnpj.org/{cnpj}` — 200, 400 (`invalid cnpj`), 404 (`not found`). Sem chave, cache de 24h na borda.
-  Usado no cadastro da ONG (medalha verde). Falha/indisponibilidade → 503, nunca aprova.
+  Usado no cadastro da ONG (triagem do CNPJ, `preVerificacaoCnpj`; o selo "cadastro verificado" é calculado à parte, ver `MEDALHAS.md`). Falha/indisponibilidade → 503, nunca aprova.
 - **Mapa das OSCs** `GET https://mapaosc.ipea.gov.br/api/api/busca/cnpj/{cnpj}` — lista; **busca por prefixo**, por isso o código só aceita o item com `cd_identificador_osc` idêntico ao CNPJ. Lista vazia = ausência neutra.
   A rota antiga `/api/cnpj/{cnpj}` (que consta no Swagger do Mapa em `/api/docs`) devolve 404: a API é uma aplicação Lumen publicada sob `/api/api/…` e esta rota não existe lá.
   404 passou a ser tratado como **fonte indisponível** (antes virava "OSC não encontrada" e escondia a quebra).

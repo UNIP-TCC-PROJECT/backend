@@ -16,9 +16,9 @@ describe('CnpjVerificationService', () => {
 
   it('should be defined', () => expect(service).toBeDefined());
 
-  it('CNPJ ativo e compatível → medalhaVerde', async () => {
+  it('CNPJ ativo e compatível → cnpjCompativel', async () => {
     get().mockResolvedValue(r(200, ong));
-    expect((await service.consultarCnpj('27.977.535/0001-73', 'ASSOCIACAO X')).verificacao).toMatchObject({ situacaoAtiva: true, naturezaCompativel: true, medalhaVerde: true });
+    expect((await service.consultarCnpj('27.977.535/0001-73', 'ASSOCIACAO X')).verificacao).toMatchObject({ situacaoAtiva: true, naturezaCompativel: true, cnpjCompativel: true });
   });
   it('404 → "não encontrado"; 400 → "inválido" (ambos BadRequest, sem retentativa)', async () => {
     const m = get().mockResolvedValue(r(404, { error: 'not found' }));

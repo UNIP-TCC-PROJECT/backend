@@ -4,7 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -368,6 +368,105 @@ describe('Plataforma — RBAC, isolamento entre ONGs, sessões e auditoria (Post
       expect((await http().get('/campaigns')).body).toHaveLength(0);
       await http().post(`/campaigns/${campA}/donations`).auth(tokDoador, { type: 'bearer' }).send({ amountCents: 5000 }).expect(404);
     });
+  });
+
+  describe('selos públicos: cadastro verificado e nível de transparência', () => {
+    let tokE: string, orgE: string, ownerE: number, ownerA: number, ownerB: number, ownerDoador: number;
+    const selos = (ids: (number | string)[] | string) => http().get(`/transparency/selos?ownerIds=${Array.isArray(ids) ? ids.join(',') : ids}`);
+    const admin = (m: 'get' | 'post', url: string) => (http() as any)[m](url).auth(tokAdmin, { type: 'bearer' });
+    const CRITERIOS = ['Instituição aprovada na validação institucional da plataforma', 'Consulta cadastral na Receita Federal registrada', 'Documentos obrigatórios analisados e aprovados'];
+
+    beforeAll(async () => {
+      ownerA = (await db.getRepository(Organization).findOneByOrFail({ id: orgA })).ownerId;
+      ownerB = (await db.getRepository(Organization).findOneByOrFail({ id: orgB })).ownerId;
+      ownerDoador = (await db.getRepository(User).findOneByOrFail({ email: 'doador@example.invalid' })).id;
+      await criar('ongE@example.invalid', UserType.ONG, { cnpj: '60979457000111' });
+      tokE = (await login('ongE@example.invalid')).body.access_token;
+      orgE = (await http().get('/organizations/me').auth(tokE, { type: 'bearer' })).body.id;
+      ownerE = (await db.getRepository(Organization).findOneByOrFail({ id: orgE })).ownerId;
+    });
+
+    it('ONG aprovada: cadastro verificado e nível de transparência, só com o necessário para exibir', async () => {
+      const r = (await selos([ownerB]).expect(200)).body[ownerB];
+      expect(Object.keys(r).sort()).toEqual(['cadastroVerificado', 'nivelTransparencia']);
+      expect(r.cadastroVerificado).toEqual({ verificado: true, validadoEm: expect.any(String), consultadoEm: expect.any(String), comRessalvas: false, criterios: CRITERIOS });
+      expect(Object.keys(r.nivelTransparencia).sort()).toEqual(['nivel', 'rotulo']);
+      expect(['DESENVOLVIMENTO', 'AVANCADA', 'EXEMPLAR']).toContain(r.nivelTransparencia.nivel); // verificado implica documentos aprovados
+      // nada de documentos, dados pessoais, justificativas ou identificadores administrativos
+      expect(JSON.stringify(r)).not.toMatch(/cnpj|cpf|email|sha256|hash|\\.pdf|reason|motivo|justific|admin|reviewedBy|ownerId|organizationId/i);
+    });
+
+    it('ONG suspensa deixa de ter o selo e o nível, sem revelar o motivo nem o status', async () => {
+      const r = (await selos([ownerA]).expect(200)).body[ownerA];
+      expect(r).toEqual({ cadastroVerificado: { verificado: false }, nivelTransparencia: null });
+    });
+
+    it('usuário sem organização (cadastro antigo) e ids inexistentes: sem selo, mesma resposta mínima', async () => {
+      const body = (await selos([ownerDoador, 987654]).expect(200)).body;
+      for (const id of [ownerDoador, 987654]) expect(body[id]).toEqual({ cadastroVerificado: { verificado: false }, nivelTransparencia: null });
+    });
+
+    it('aprovação manual com divergência: selo com ressalvas; o registro interno guarda divergência, justificativa, data e responsável', async () => {
+      brasil = 'divergente';
+      await enviarTudo(tokE, '60979457000111');
+      await http().post('/organizations/me/submit').auth(tokE, { type: 'bearer' }).expect(201);
+      const bloqueada = await aprovar(orgE);
+      expect(bloqueada.status).toBe(400);
+      expect(bloqueada.body.blockers).toEqual(expect.arrayContaining(['alerta em BRASILAPI']));
+      expect((await selos([ownerE])).body[ownerE].cadastroVerificado).toEqual({ verificado: false });
+      const justificativa = 'Divergência de grafia da razão social conferida com o estatuto registrado.';
+      const ok = await aprovar(orgE, { decision: 'APROVAR', overrideReason: justificativa });
+      expect(ok.status).toBe(201);
+      brasil = 'ok';
+
+      const publico = (await selos([ownerE]).expect(200)).body[ownerE];
+      expect(publico.cadastroVerificado).toMatchObject({ verificado: true, comRessalvas: true });
+      // o público sabe que houve ressalvas, mas não o conteúdo interno
+      expect(JSON.stringify(publico)).not.toContain('Divergência de grafia');
+      expect(JSON.stringify(publico)).not.toMatch(/OUTRA EMPRESA|Razão social diverge|blockers|reservations|findings/i);
+
+      const log = await db.getRepository(AuditLog).findOneOrFail({ where: { organizationId: orgE, action: 'ORG_APPROVED' } });
+      const adminUser = await db.getRepository(User).findOneByOrFail({ email: 'admin@example.invalid' });
+      expect(log.actorId).toBe(adminUser.id); // responsável
+      expect(log.createdAt).toBeInstanceOf(Date); // data
+      expect(log.metadata).toMatchObject({ overrideReason: justificativa }); // justificativa
+      const res: any = (log.metadata as any).reservations; // divergência
+      expect(res.blockers).toContain('alerta em BRASILAPI');
+      const cad = res.checks.find((c: any) => c.source === 'BRASILAPI');
+      expect(cad).toMatchObject({ status: 'ALERTA' });
+      expect(cad.findings.join(' ')).toMatch(/Razão social diverge/);
+      // e a decisão aparece no histórico de validações da administração
+      const hist = (await admin('get', `/admin/organizations/${orgE}`)).body.validations;
+      expect(hist.find((v: any) => v.decision === 'APROVAR')).toMatchObject({ reason: justificativa, reviewedBy: adminUser.id });
+    });
+
+    it('é dinâmico: documento obrigatório fora da aprovação derruba o selo e volta quando reaprovado', async () => {
+      const docs = db.getRepository(OrganizationDocument);
+      expect((await selos([ownerE])).body[ownerE].cadastroVerificado.verificado).toBe(true);
+      await docs.update({ organizationId: orgE, type: 'ESTATUTO' as any, supersededAt: IsNull() }, { status: 'PENDENTE' as any });
+      const sem = (await selos([ownerE])).body[ownerE];
+      expect(sem.cadastroVerificado).toEqual({ verificado: false });
+      // independência: o nível continua sendo calculado pela sua própria regra (documentos pendentes → Inicial)
+      expect(sem.nivelTransparencia).toMatchObject({ nivel: 'INICIAL' });
+      await docs.update({ organizationId: orgE, type: 'ESTATUTO' as any, supersededAt: IsNull() }, { status: 'APROVADO' as any });
+      expect((await selos([ownerE])).body[ownerE].cadastroVerificado.verificado).toBe(true);
+    });
+
+    it('é dinâmico: suspender a ONG derruba o selo imediatamente', async () => {
+      await admin('post', `/admin/organizations/${orgE}/suspend`).send({ reason: 'Denúncia procedente' }).expect(201);
+      expect((await selos([ownerE])).body[ownerE]).toEqual({ cadastroVerificado: { verificado: false }, nivelTransparencia: null });
+    });
+
+    it('valida os ids: só inteiros positivos, sem lixo, no máximo 50 (sem exigir login)', async () => {
+      for (const ruim of ['', 'abc', '0', '-1', '1.5', '1,,2', '1,a', '1e3', ' ', "1;DROP TABLE", '9999999999', Array.from({ length: 51 }, (_, i) => i + 1).join(',')])
+        await selos(ruim === '' ? ' ' : encodeURIComponent(ruim)).expect(400);
+      await http().get('/transparency/selos').expect(400);
+      await http().get('/transparency/selos?ownerIds=1&ownerIds=2').expect(400); // lista repetida não vale
+      const dup = (await selos([ownerB, ownerB]).expect(200)).body;
+      expect(Object.keys(dup)).toEqual([String(ownerB)]); // repetidos são unificados
+      expect(Object.keys((await selos(Array.from({ length: 50 }, (_, i) => i + 1)).expect(200)).body)).toHaveLength(50);
+    });
+    // O limite de consultas (429) é testado em src/accountability/selos.throttle.spec.ts: este e2e desliga o ThrottlerGuard.
   });
 
   describe('Pix (Asaas sandbox simulado) e webhooks', () => {

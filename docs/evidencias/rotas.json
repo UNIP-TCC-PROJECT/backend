@@ -1,5 +1,5 @@
 {
- "total": 125,
+ "total": 127,
  "publicas": [
   "GET /campaigns",
   "GET /campaigns/:id",
@@ -16,6 +16,7 @@
   "GET /transparency/organizations/:id",
   "GET /transparency/organizations/:id/ledger",
   "GET /transparency/publications/:id/accountability",
+  "GET /transparency/selos",
   "GET /users/:ongId/reviews",
   "GET /users/ongs",
   "GET /users/ongs/:id",
@@ -273,6 +274,16 @@
   },
   {
    "rota": "GET /admin/organizations",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "GET /admin/organizations/integrations",
    "guards": [
     "JwtAuthGuard",
     "RolesGuard"
@@ -758,6 +769,13 @@
    "roles": [
     "ADMIN"
    ]
+  },
+  {
+   "rota": "GET /transparency/selos",
+   "guards": [
+    "ThrottlerGuard"
+   ],
+   "roles": null
   },
   {
    "rota": "GET /transparency/organizations/:id",

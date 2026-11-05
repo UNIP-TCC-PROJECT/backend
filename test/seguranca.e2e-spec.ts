@@ -245,7 +245,7 @@ describe('Revisão de segurança', () => {
       const PUBLIC_ALLOWLIST = [
         'POST /users', 'POST /users/login', 'GET /users/ongs', 'GET /users/ongs/:id', 'GET /metas/ong/:id', 'GET /publicacoes', 'GET /publicacoes/ong/:ongId', 'GET /publicacoes/:id',
         'GET /users/:ongId/reviews', 'POST /auth/forgot-password', 'POST /auth/reset-password', 'GET /campaigns', 'GET /campaigns/:id', 'GET /organizations/public', 'GET /organizations/public/:id',
-        'GET /transparency/organizations/:id', 'GET /transparency/expense-documents/:id/file', 'GET /transparency/evidences/:id/file', 'GET /transparency/organizations/:id/ledger', 'GET /transparency/by-owner/:userId', 'GET /transparency/publications/:id/accountability', 'GET /publicacoes/anexos/:id/file', 'POST /webhooks/asaas', 'GET /',
+        'GET /transparency/organizations/:id', 'GET /transparency/expense-documents/:id/file', 'GET /transparency/evidences/:id/file', 'GET /transparency/organizations/:id/ledger', 'GET /transparency/by-owner/:userId', 'GET /transparency/selos', 'GET /transparency/publications/:id/accountability', 'GET /publicacoes/anexos/:id/file', 'POST /webhooks/asaas', 'GET /',
       ];
       const publicRoutes = routes.filter((r) => !isAuth(r.guards)).map((r) => `${r.method} ${r.path}`);
       const unexpected = publicRoutes.filter((r) => !PUBLIC_ALLOWLIST.includes(r));
@@ -305,15 +305,15 @@ describe('Revisão de segurança', () => {
     it('AUTZ-09 cadastro e perfil: sem escalonamento de privilégio nem mass assignment', async () => {
       const bad = { name: 'Fulano de Teste', email: 'privesc@example.invalid', password: SENHA, type: 'ADMIN' };
       await http().post('/users').send(bad).expect(400);
-      const r = await http().post('/users').send({ ...bad, type: 'DOADOR', status: 'ATIVO', medalhaBranca: true, medalhaVerde: true, averageRating: 5, id: 999, asaasCustomerId: 'cus_x', mfaEnabled: false, role: 'ADMIN' });
+      const r = await http().post('/users').send({ ...bad, type: 'DOADOR', status: 'ATIVO', medalhaBranca: true, medalhaVerde: true, medalhaBrancaLegada: true, preVerificacaoCnpj: true, averageRating: 5, id: 999, asaasCustomerId: 'cus_x', mfaEnabled: false, role: 'ADMIN' });
       expect([201, 200]).toContain(r.status);
       const u = await db.getRepository(User).findOneByOrFail({ email: 'privesc@example.invalid' });
-      expect(u).toMatchObject({ type: 'DOADOR', medalhaBranca: false, medalhaVerde: false, asaasCustomerId: null });
+      expect(u).toMatchObject({ type: 'DOADOR', medalhaBrancaLegada: false, preVerificacaoCnpj: false, asaasCustomerId: null });
       expect(Number(u.averageRating)).toBe(0);
       const { token } = await tokenFor(u);
-      await patch('/users/me', token).send({ type: 'ADMIN', status: 'ATIVO', medalhaBranca: true, password: 'outra-senha-1', failedLoginAttempts: 0, mfaEnabled: true }).expect(200);
+      await patch('/users/me', token).send({ type: 'ADMIN', status: 'ATIVO', medalhaBranca: true, medalhaBrancaLegada: true, password: 'outra-senha-1', failedLoginAttempts: 0, mfaEnabled: true }).expect(200);
       const u2 = await db.getRepository(User).findOneByOrFail({ id: u.id });
-      expect(u2.type).toBe('DOADOR'); expect(u2.medalhaBranca).toBe(false); expect(u2.password).toBe(u.password);
+      expect(u2.type).toBe('DOADOR'); expect(u2.medalhaBrancaLegada).toBe(false); expect(u2.password).toBe(u.password);
       await get('/admin/organizations', token).expect(403);
     });
     it('AUTZ-10 conta suspensa/banida perde o acesso imediatamente (qualquer perfil), mesmo com token ainda válido', async () => {
@@ -337,8 +337,8 @@ describe('Revisão de segurança', () => {
       expect([403, 404]).toContain((await get(`/conversas/${cid}/mensagens`, B.token)).status);
       expect([403, 404]).toContain((await post(`/conversas/${cid}/mensagens`, doador2Tok).send({ texto: 'intruso' })).status);
     });
-    it('AUTZ-12 ONG não troca o próprio CNPJ após a verificação (mantém medalha só para o CNPJ verificado)', async () => {
-      await db.getRepository(User).update(A.user.id, { medalhaVerde: true });
+    it('AUTZ-12 ONG não troca o próprio CNPJ após a verificação (o cadastro verificado vale só para o CNPJ validado)', async () => {
+      await db.getRepository(User).update(A.user.id, { preVerificacaoCnpj: true });
       await patch(`/users/ongs/${A.user.id}`, A.token).send({ cnpj: '00000000000191' });
       const u = await db.getRepository(User).findOneByOrFail({ id: A.user.id });
       expect(u.cnpj).toBe('11222333000181');
