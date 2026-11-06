@@ -12,6 +12,7 @@ import { mkdir, unlink } from 'node:fs/promises';
 import { User, UserStatus, UserType } from '../src/users/entities/user.entity';
 import { UsersModule } from '../src/users/users.module';
 import { Medalha } from '../src/medalhas/entities/medalha.entity';
+import { Organization } from '../src/organizations/entities/organization.entity';
 import {
   DocumentoMedalhaBranca,
   PedidoMedalhaBranca,
@@ -22,9 +23,6 @@ import { AuditModule } from '../src/audit/audit.module';
 import { AuditLog } from '../src/audit/audit-log.entity';
 import { Session } from '../src/auth/entities/session.entity';
 
-// Banco real, mas tabelas/contas exclusivas de um schema temporário.
-// Execute: node node_modules/jest/bin/jest.js --config test/jest-medalha-branca.json --runInBand
-// O programa foi encerrado: o histórico (pedidos, análises e documentos) segue consultável e intacto; novos pedidos e análises não são aceitos.
 describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', () => {
   jest.setTimeout(30000);
   const schema = `teste_medalha_${process.pid}_${Date.now()}`;
@@ -64,6 +62,7 @@ describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', (
           ...runtimeOptions(schema),
           entities: [
             User,
+            Organization,
             Medalha,
             PedidoMedalhaBranca,
             DocumentoMedalhaBranca,
@@ -106,7 +105,6 @@ describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', (
     ong = await criar('ong');
     outra = await criar('outra');
     const jwt = app.get(JwtService);
-    // Tokens só valem com sessão ativa no banco; admin precisa de sessão com MFA verificado.
     const assinar = async (user: User) => {
       const sessao = await db.getRepository(Session).save({
         userId: user.id,
@@ -179,12 +177,19 @@ describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', (
       .auth(token, { type: 'bearer' })
       .expect(200);
     expect(res.body.status).toBe('Aprovado');
-    expect(res.body.solicitacoes.map((p: { id: number; status: string }) => [p.id, p.status])).toEqual([
+    expect(
+      res.body.solicitacoes.map((p: { id: number; status: string }) => [
+        p.id,
+        p.status,
+      ]),
+    ).toEqual([
       [pedidoAprovadoId, 'Aprovado'],
       [pedidoRecusadoId, 'Recusado'],
     ]);
     expect(res.body.solicitacoes[1].motivo).toBe('Documento ilegível');
-    expect(res.body.solicitacoes[0].documentos[0]).not.toHaveProperty('conteudo');
+    expect(res.body.solicitacoes[0].documentos[0]).not.toHaveProperty(
+      'conteudo',
+    );
   });
 
   it('ONG sem histórico segue como NaoSolicitado', async () => {
@@ -227,18 +232,27 @@ describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', (
       .send({ status: 'Recusado', motivo: 'tentativa' })
       .expect(410);
     // A autorização continua valendo antes do encerramento.
-    await request(app.getHttpServer()).post('/medalha-branca/minha').expect(401);
+    await request(app.getHttpServer())
+      .post('/medalha-branca/minha')
+      .expect(401);
     await request(app.getHttpServer())
       .patch(`/medalha-branca/admin/${pedidoAprovadoId}`)
       .auth(token, { type: 'bearer' })
       .send({ status: 'Recusado' })
       .expect(403);
-    expect(await db.getRepository(PedidoMedalhaBranca).count()).toBe(antes.pedidos);
-    expect(await db.getRepository(DocumentoMedalhaBranca).count()).toBe(antes.docs);
-    const aprovado = await db.getRepository(PedidoMedalhaBranca).findOneByOrFail({ id: pedidoAprovadoId });
+    expect(await db.getRepository(PedidoMedalhaBranca).count()).toBe(
+      antes.pedidos,
+    );
+    expect(await db.getRepository(DocumentoMedalhaBranca).count()).toBe(
+      antes.docs,
+    );
+    const aprovado = await db
+      .getRepository(PedidoMedalhaBranca)
+      .findOneByOrFail({ id: pedidoAprovadoId });
     expect(aprovado.status).toBe('Aprovado');
     expect(
-      (await db.getRepository(User).findOneByOrFail({ id: ong.id })).medalhaBrancaLegada,
+      (await db.getRepository(User).findOneByOrFail({ id: ong.id }))
+        .medalhaBrancaLegada,
     ).toBe(true);
   });
 
@@ -274,12 +288,27 @@ describe('Medalha Branca — histórico do programa encerrado, no PostgreSQL', (
     const publico = await request(app.getHttpServer())
       .get(`/users/ongs/${ong.id}`)
       .expect(200);
-    expect(publico.body).toMatchObject({ name: 'ong', description: 'Descrição preservada' });
-    for (const campo of ['medalhaVerde', 'medalhaBranca', 'medalhaBrancaLegada', 'preVerificacaoCnpj'])
+    expect(publico.body).toMatchObject({
+      name: 'ong',
+      description: 'Descrição preservada',
+    });
+    for (const campo of [
+      'medalhaVerde',
+      'medalhaBranca',
+      'medalhaBrancaLegada',
+      'preVerificacaoCnpj',
+    ])
       expect(publico.body).not.toHaveProperty(campo);
-    const lista = await request(app.getHttpServer()).get('/users/ongs').expect(200);
+    const lista = await request(app.getHttpServer())
+      .get('/users/ongs')
+      .expect(200);
     for (const item of lista.body as Record<string, unknown>[])
-      for (const campo of ['medalhaVerde', 'medalhaBranca', 'medalhaBrancaLegada', 'preVerificacaoCnpj'])
+      for (const campo of [
+        'medalhaVerde',
+        'medalhaBranca',
+        'medalhaBrancaLegada',
+        'preVerificacaoCnpj',
+      ])
         expect(item).not.toHaveProperty(campo);
   });
 

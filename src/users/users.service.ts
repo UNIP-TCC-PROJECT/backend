@@ -1,7 +1,5 @@
 import {
   Injectable,
-  HttpException,
-  HttpStatus,
   ConflictException,
   NotFoundException,
   ForbiddenException,
@@ -21,8 +19,8 @@ import { BANKS } from '../common/banks';
 import { normalizeWebsite } from '../common/br-validators';
 import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
+import { Organization } from '../organizations/entities/organization.entity';
 
-// Nunca devolve hash de senha nem campos internos (segredos MFA, vínculo com o provedor, contadores de bloqueio).
 const INTERNAL_FIELDS = [
   'password',
   'mfaSecret',
@@ -72,7 +70,6 @@ export class UsersService {
     const user = this.repo.create({
       ...data,
       website: normalizeWebsite(data.website),
-      // Banco da lista: o nome oficial vem do servidor, não do cliente.
       ...(data.bankCode ? { bank: BANKS[data.bankCode] } : { bankCode: null }),
       password: hashedPassword,
       status: UserStatus.ATIVO,
@@ -225,7 +222,18 @@ export class UsersService {
     }
 
     const updatedUser = await this.repo.save(user);
+    if (Object.prototype.hasOwnProperty.call(data, 'name'))
+      await this.syncOrganizationName(updatedUser);
     return sanitizeUser(updatedUser);
+  }
+
+  private async syncOrganizationName(user: User) {
+    if (user.type !== UserType.ONG || !user.name?.trim()) return;
+    await this.repo.manager.update(
+      Organization,
+      { ownerId: user.id },
+      { tradeName: user.name },
+    );
   }
 
   async updateOng(id: number, data: any, requestingUserId: number) {
@@ -259,6 +267,7 @@ export class UsersService {
     Object.assign(ong, data);
 
     const updatedOng = await this.repo.save(ong);
+    if (data?.name !== undefined) await this.syncOrganizationName(updatedOng);
     return sanitizeUser(updatedOng);
   }
 

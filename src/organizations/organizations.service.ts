@@ -68,7 +68,6 @@ export class OrganizationsService implements OnModuleInit {
     private checks: ExternalChecksService,
   ) {}
 
-  // Estado renomeado na etapa de validação institucional (RASCUNHO → INCOMPLETO).
   async onModuleInit() {
     await this.orgs.update(
       { status: 'RASCUNHO' as OrganizationStatus },
@@ -76,11 +75,6 @@ export class OrganizationsService implements OnModuleInit {
     );
   }
 
-  /**
-   * Única porta de entrada para resolver "a ONG do usuário logado". A organização nunca vem de
-   * parâmetro/corpo da requisição, o que impede acesso a dados de outra ONG.
-   * ONGs criadas antes desta etapa ganham o registro de organização no primeiro acesso.
-   */
   async ofOwner(userId: number, ip?: string): Promise<Organization> {
     const found = await this.orgs.findOneBy({ ownerId: userId });
     if (found) return found;
@@ -121,7 +115,6 @@ export class OrganizationsService implements OnModuleInit {
     return org;
   }
 
-  /** Para operações que alteram dados: ONG precisa estar APROVADA (não suspensa/reprovada). */
   async approvedOfOwner(userId: number): Promise<Organization> {
     const org = await this.ofOwner(userId);
     if (org.status !== OrganizationStatus.APROVADA) {
@@ -132,7 +125,6 @@ export class OrganizationsService implements OnModuleInit {
     return org;
   }
 
-  /** O que falta para solicitar a análise (campos e documentos obrigatórios vigentes). */
   async missingForSubmission(org: Organization) {
     const labels: Partial<Record<keyof Organization, string>> = {
       legalName: 'Razão social',
@@ -199,6 +191,8 @@ export class OrganizationsService implements OnModuleInit {
         'Dados institucionais alterados após a aprovação; reenvie para análise.';
     }
     await this.orgs.save(org);
+    if (changed.includes('tradeName') && org.tradeName?.trim())
+      await this.users.update(org.ownerId, { name: org.tradeName });
     await this.audit.log({
       actor: user,
       action: 'ORG_UPDATED',
