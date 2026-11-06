@@ -5,6 +5,8 @@ import { DataSource, IsNull, MoreThan, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcrypt';
 
+import { Session } from '../auth/entities/session.entity';
+import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { User, UserStatus } from '../users/entities/user.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { MailService } from '../mail/mail.service';
@@ -72,7 +74,7 @@ export class PasswordResetService {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
     await this.dataSource.transaction(async (manager) => {
       // "Reserva" o token de forma atômica: só um pedido consegue marcar
@@ -91,6 +93,13 @@ export class PasswordResetService {
         User,
         { id: record.userId },
         { password: hashedPassword },
+      );
+
+      // Trocar a senha encerra todas as sessões abertas da conta.
+      await manager.update(
+        Session,
+        { userId: record.userId, revokedAt: IsNull() },
+        { revokedAt: new Date() },
       );
 
       // Qualquer outro link ainda pendente dessa conta deixa de valer.

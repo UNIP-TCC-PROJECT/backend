@@ -51,11 +51,16 @@ status!: UserStatus;
   @Column({ nullable: true })
   cnpj?: string;
 
-  @Column({ default: false })
-  medalhaVerde!: boolean;
+  /**
+   * Resultado da triagem do CNPJ feita no cadastro (histórico). Não é o selo exibido ao público: o "cadastro
+   * verificado" é calculado a partir da validação institucional (ver organizations/registration-verification.ts).
+   */
+  @Column({ name: 'medalhaVerde', default: false })
+  preVerificacaoCnpj!: boolean;
 
-  @Column({ default: false })
-  medalhaBranca!: boolean;
+  /** Aprovação do antigo programa da Medalha Branca (histórico; o programa foi encerrado). */
+  @Column({ name: 'medalhaBranca', default: false })
+  medalhaBrancaLegada!: boolean;
 
   @Column({ nullable: true })
   phone?: string;
@@ -69,6 +74,9 @@ status!: UserStatus;
   @Column({ nullable: true })
   street?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  district?: string;
+
   @Column({ nullable: true })
   city?: string;
 
@@ -77,6 +85,10 @@ status!: UserStatus;
 
   @Column({ nullable: true })
   bank?: string;
+
+  // Código do banco (lista oficial); nulo quando o banco foi informado como "Outro".
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  bankCode?: string | null;
 
   @Column({ nullable: true })
   agency?: string;
@@ -115,8 +127,27 @@ status!: UserStatus;
   @Column({ nullable: true })
   profileImage?: string;
 
+  // Capa do perfil público da ONG (institucional; sem metadados).
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  coverImage?: string | null;
+
   @Column({ nullable: true })
   category?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  asaasCustomerId?: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts!: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lockedUntil?: Date | null;
+
+  @Column({ default: false })
+  mfaEnabled!: boolean;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  mfaSecret?: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

@@ -57,74 +57,52 @@ export class CnpjVerificationService {
     };
   }
 
-  private normalizarCnpj(cnpj: string): string {
-    return cnpj.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
-  private calcularDigitoVerificador(base: string): number {
-    const pesos = [2, 3, 4, 5, 6, 7, 8, 9];
-    let soma = 0;
-
-    for (let i = base.length - 1, posicao = 0; i >= 0; i--, posicao++) {
-      const valor = base.charCodeAt(i) - 48;
-      soma += valor * pesos[posicao % pesos.length];
-    }
-
-    const resto = soma % 11;
-    return resto < 2 ? 0 : 11 - resto;
-  }
-
-  private cnpjValido(cnpj: string): boolean {
-    if (!/^[A-Z0-9]{12}\d{2}$/.test(cnpj)) {
-      return false;
-    }
-
-    if (/^([A-Z0-9])\1{13}$/.test(cnpj)) {
-      return false;
-    }
-
-    const primeiroDigito = this.calcularDigitoVerificador(cnpj.slice(0, 12));
-    const segundoDigito = this.calcularDigitoVerificador(
-      `${cnpj.slice(0, 12)}${primeiroDigito}`,
-    );
-
-    return cnpj.endsWith(`${primeiroDigito}${segundoDigito}`);
-  }
-
   async consultarCnpj(cnpj: string, nomeInformado?: string) {
-    const cnpjEntrada = cnpj.trim().toUpperCase();
+    const cnpjLimpo = cnpj.replace(/\D/g, '');
 
-    if (/[^A-Z0-9./\s-]/.test(cnpjEntrada)) {
-      throw new BadRequestException('CNPJ inválido.');
+    if (cnpjLimpo.length !== 14) {
+      throw new BadRequestException(
+        'CNPJ inválido. Informe um CNPJ com 14 dígitos.',
+      );
     }
 
-    const cnpjLimpo = this.normalizarCnpj(cnpjEntrada);
-
-    if (!this.cnpjValido(cnpjLimpo)) {
-      throw new BadRequestException('CNPJ inválido.');
-    }
-
-    if (!this.cnpjValido(cnpjLimpo)) {
-      throw new BadRequestException('CNPJ inválido.');
-    }
-
+    const base = process.env.OPENCNPJ_URL ?? 'https://api.opencnpj.org';
     let response;
 
-    try {
-      response = await axios.get(`https://api.opencnpj.org/${cnpjLimpo}`, {
-        timeout: 10000,
-      });
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        throw new BadRequestException('CNPJ não encontrado.');
+    // Uma retentativa para falha de rede/5xx/429; 400 e 404 são respostas definitivas da fonte.
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        response = await axios.get(`${base}/${cnpjLimpo}`, {
+          timeout: 10000,
+          validateStatus: () => true,
+        });
+      } catch {
+        response = undefined;
       }
+      const status = response?.status;
+      if (status === 404) throw new BadRequestException('CNPJ não encontrado.');
+      if (status === 400) throw new BadRequestException('CNPJ inválido.');
+      if (status === 200) break;
+      if (tentativa === 1) {
+        throw new ServiceUnavailableException(
+          'Não foi possível consultar o CNPJ no momento. Tente novamente mais tarde.',
+        );
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
 
+    const data = response!.data;
+
+    // Resposta fora do formato ou de outro CNPJ: a fonte é tratada como indisponível, nunca aprova.
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      String(data.cnpj ?? '').replace(/\D/g, '') !== cnpjLimpo
+    ) {
       throw new ServiceUnavailableException(
         'Não foi possível consultar o CNPJ no momento. Tente novamente mais tarde.',
       );
     }
-
-    const data = response.data;
 
     const cnpjEncontrado = true;
 
@@ -151,7 +129,7 @@ export class CnpjVerificationService {
 
     const analiseCnae = this.analisarCnae(data.cnaes || []);
 
-    const medalhaVerde =
+    const cnpjCompativel =
       cnpjEncontrado &&
       situacaoAtiva &&
       naturezaCompativel &&
@@ -173,7 +151,7 @@ export class CnpjVerificationService {
         cnaeCompativel: analiseCnae.compativel,
         cnaePontuacao: analiseCnae.pontuacao,
         termosCnae: analiseCnae.termosEncontrados,
-        medalhaVerde,
+        cnpjCompativel,
       },
     };
   }

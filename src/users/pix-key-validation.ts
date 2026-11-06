@@ -22,9 +22,7 @@ function cnpjValido(valor: string): boolean {
   }
 
   const primeiroDigito = calcularDigito(cnpj.slice(0, 12));
-  const segundoDigito = calcularDigito(
-    `${cnpj.slice(0, 12)}${primeiroDigito}`,
-  );
+  const segundoDigito = calcularDigito(`${cnpj.slice(0, 12)}${primeiroDigito}`);
 
   return cnpj.endsWith(`${primeiroDigito}${segundoDigito}`);
 }
@@ -53,8 +51,9 @@ export function pixKeyValida(chave: string): boolean {
     return true;
   }
 
-  const telefoneComCodigo =
-    /^\+55(?:[1-9]\d9\d{8}|[1-9]\d[2-5]\d{7})$/.test(valor);
+  const telefoneComCodigo = /^\+55(?:[1-9]\d9\d{8}|[1-9]\d[2-5]\d{7})$/.test(
+    valor,
+  );
   const telefoneCelularNacional =
     /^(?:[1-9]\d9\d{8}|\([1-9]\d\)\s?9\d{4}-?\d{4})$/.test(valor);
 

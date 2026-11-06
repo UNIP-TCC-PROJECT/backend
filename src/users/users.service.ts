@@ -1,7 +1,5 @@
 import {
   Injectable,
-  HttpException,
-  HttpStatus,
   ConflictException,
   NotFoundException,
   ForbiddenException,
@@ -11,24 +9,36 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 
 import { User, UserType, UserStatus } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
 import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
-import { cpfValido } from './cpf-validation';
-import { pixKeyValida } from './pix-key-validation';
-import type { JwtPayload } from '../auth/jwt-payload.interface';
+import { BANKS } from '../common/banks';
+import { normalizeWebsite } from '../common/br-validators';
+import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
+import { Organization } from '../organizations/entities/organization.entity';
+
+const INTERNAL_FIELDS = [
+  'password',
+  'mfaSecret',
+  'asaasCustomerId',
+  'failedLoginAttempts',
+  'lockedUntil',
+] as const;
+export function sanitizeUser<T extends object>(user: T) {
+  const copy = { ...user } as Record<string, unknown>;
+  for (const f of INTERNAL_FIELDS) delete copy[f];
+  return copy as Omit<T, (typeof INTERNAL_FIELDS)[number]>;
+}
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private repo: Repository<User>,
-    private jwtService: JwtService,
     private cnpjVerificationService: CnpjVerificationService,
   ) {}
 
@@ -40,14 +50,9 @@ export class UsersService {
     if (existingUser) {
       throw new ConflictException('Email já cadastrado');
     }
-    if (data.type === UserType.ONG && !pixKeyValida(data.pixKey)) {
-      throw new BadRequestException(
-        'Informe uma chave PIX válida: CPF, CNPJ, e-mail, celular brasileiro com DDD ou chave aleatória UUID.',
-      );
-    }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
-    let medalhaVerde = false;
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+    let preVerificacaoCnpj = false;
 
     if (data.type === UserType.ONG) {
       if (!data.cnpj) {
@@ -59,77 +64,20 @@ export class UsersService {
         data.name,
       );
 
-      medalhaVerde = verificacao.verificacao.medalhaVerde;
+      preVerificacaoCnpj = verificacao.verificacao.cnpjCompativel;
     }
-    if (data.type === UserType.ONG && !cpfValido(data.legalCpf)) {
-      throw new BadRequestException('O CPF do responsável legal é inválido.');
-    }
-
-    if (data.type === UserType.DOADOR && !cpfValido(data.cpf)) {
-      throw new BadRequestException('O CPF informado é inválido.');
-    }
-
-    const pixKeyInformada = data.pixKey?.trim();
-    const telefoneCelularNacional = pixKeyInformada
-      ? /^(?:[1-9]\d9\d{8}|\([1-9]\d\)\s?9\d{4}-?\d{4})$/.test(
-          pixKeyInformada,
-        )
-      : false;
-    const pixKeyNormalizada = telefoneCelularNacional
-      ? `+55${pixKeyInformada.replace(/\D/g, '')}`
-      : pixKeyInformada;
 
     const user = this.repo.create({
       ...data,
-      ...(data.type === UserType.ONG && pixKeyNormalizada
-        ? { pixKey: pixKeyNormalizada }
-        : {}),
+      website: normalizeWebsite(data.website),
+      ...(data.bankCode ? { bank: BANKS[data.bankCode] } : { bankCode: null }),
       password: hashedPassword,
       status: UserStatus.ATIVO,
-      medalhaVerde,
+      preVerificacaoCnpj,
     });
 
     const savedUser = await this.repo.save(user);
-    const { password, ...result } = savedUser;
-
-    return result;
-  }
-
-  async login(email: string, password: string) {
-    const user = await this.repo.findOne({
-      where: { email },
-    });
-
-    if (!user) {
-      throw new HttpException(
-        'Email ou senha inválidos',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-      throw new HttpException(
-        'Email ou senha inválidos',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    if (user.status !== UserStatus.ATIVO) {
-      throw new ForbiddenException('Esta conta não está ativa');
-    }
-
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      type: user.type,
-      status: user.status,
-    };
-
-    const accessToken = await this.jwtService.signAsync(payload);
-
-    return { access_token: accessToken };
+    return sanitizeUser(savedUser);
   }
 
   async findById(id: number) {
@@ -141,8 +89,17 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const { password, ...result } = user;
-    return result;
+    return sanitizeUser(user);
+  }
+
+  async updateCoverImage(userId: number, coverImage: string) {
+    const user = await this.repo.findOne({
+      where: { id: userId, type: UserType.ONG },
+      select: ['id'],
+    });
+    if (!user) throw new NotFoundException('ONG não encontrada');
+    await this.repo.update(userId, { coverImage });
+    return { coverImage };
   }
 
   async updateProfileImage(userId: number, profileImage: string) {
@@ -156,7 +113,7 @@ export class UsersService {
 
   async findAllUsers() {
     const users = await this.repo.find();
-    return users.map(({ password, ...rest }) => rest);
+    return users.map(sanitizeUser);
   }
 
   async findAllOngs() {
@@ -174,6 +131,7 @@ export class UsersService {
         'website',
         'pixKey',
         'profileImage',
+        'coverImage',
         'category',
         'city',
         'state',
@@ -181,8 +139,6 @@ export class UsersService {
         'averageRating',
         'totalReviews',
         'status',
-        'medalhaVerde',
-        'medalhaBranca',
       ],
     });
   }
@@ -205,6 +161,7 @@ export class UsersService {
         'website',
         'pixKey',
         'profileImage',
+        'coverImage',
         'category',
         'city',
         'state',
@@ -212,8 +169,6 @@ export class UsersService {
         'averageRating',
         'totalReviews',
         'status',
-        'medalhaVerde',
-        'medalhaBranca',
       ],
     });
 
@@ -267,9 +222,18 @@ export class UsersService {
     }
 
     const updatedUser = await this.repo.save(user);
-    const { password, ...result } = updatedUser;
+    if (Object.prototype.hasOwnProperty.call(data, 'name'))
+      await this.syncOrganizationName(updatedUser);
+    return sanitizeUser(updatedUser);
+  }
 
-    return result;
+  private async syncOrganizationName(user: User) {
+    if (user.type !== UserType.ONG || !user.name?.trim()) return;
+    await this.repo.manager.update(
+      Organization,
+      { ownerId: user.id },
+      { tradeName: user.name },
+    );
   }
 
   async updateOng(id: number, data: any, requestingUserId: number) {
@@ -288,12 +252,23 @@ export class UsersService {
       throw new ForbiddenException('Você só pode editar o próprio perfil');
     }
 
+    // O CNPJ foi verificado no cadastro (e sustenta o cadastro verificado): trocá-lo exige nova validação pela administração.
+    if (
+      data?.cnpj !== undefined &&
+      String(data.cnpj).replace(/\D/g, '') !==
+        String(ong.cnpj ?? '').replace(/\D/g, '')
+    ) {
+      throw new BadRequestException(
+        'O CNPJ não pode ser alterado. Solicite a alteração à administração da plataforma.',
+      );
+    }
+    delete data.cnpj;
+
     Object.assign(ong, data);
 
     const updatedOng = await this.repo.save(ong);
-    const { password, ...result } = updatedOng;
-
-    return result;
+    if (data?.name !== undefined) await this.syncOrganizationName(updatedOng);
+    return sanitizeUser(updatedOng);
   }
 
   async createAdmin(data: CreateAdminDto) {
@@ -305,7 +280,7 @@ export class UsersService {
       throw new ConflictException('Email já cadastrado');
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
     const admin = this.repo.create({
       name: data.name,
@@ -316,8 +291,6 @@ export class UsersService {
     });
 
     const savedAdmin = await this.repo.save(admin);
-    const { password, ...result } = savedAdmin;
-
-    return result;
+    return sanitizeUser(savedAdmin);
   }
 }

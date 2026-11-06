@@ -1,17 +1,10 @@
 import { DataSource } from 'typeorm';
 import { User, UserType } from './src/users/entities/user.entity';
 import * as bcrypt from 'bcrypt';
+import { dbOptions } from './src/database/database.config';
 
-const AppDataSource = new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'tcc_db',
-  entities: [User],
-  synchronize: true,
-});
+// Mesmas opções da aplicação: sem credenciais padrão e sem synchronize (o schema vem das migrations).
+const AppDataSource = new DataSource(dbOptions('runtime'));
 
 async function seed() {
   await AppDataSource.initialize();

@@ -1,3 +1,4 @@
+import { IsStrongPassword } from '../../common/password';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 
 export class CreateAdminDto {
@@ -7,7 +8,6 @@ export class CreateAdminDto {
   @IsEmail()
   email!: string;
 
-  @IsString()
-  @MinLength(6)
+  @IsStrongPassword()
   password!: string;
 }

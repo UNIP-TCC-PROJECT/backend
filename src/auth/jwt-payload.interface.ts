@@ -5,4 +5,5 @@ export interface JwtPayload {
   email: string;
   type: UserType;
   status: UserStatus;
+  sid: string;
 }

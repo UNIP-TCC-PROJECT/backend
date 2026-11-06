@@ -15,12 +15,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { detectImage } from '../common/file-upload';
+import { stripImageMetadata } from '../common/sanitize';
 import { randomUUID } from 'crypto';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user-dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { AuthService } from '../auth/auth.service';
 import { LoginDto } from './dto/loginDto';
 import { UpdateOngDto } from './dto/update-ong-dto';
 import { UpdateProfileDto } from './dto/update-profile-dto';
@@ -34,9 +39,14 @@ import { UserType } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private authService: AuthService,
+  ) {}
 
   @Post()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UsePipes(new ValidationPipe())
   createUser(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
@@ -44,8 +54,13 @@ export class UsersController {
 
   @Post('login')
   @UsePipes(new ValidationPipe())
-  login(@Body() loginDto: LoginDto) {
-    return this.usersService.login(loginDto.email, loginDto.password);
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  login(@Body() loginDto: LoginDto, @Request() req: any) {
+    return this.authService.login(loginDto.email, loginDto.password, loginDto.otp, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Get('me')
@@ -58,20 +73,8 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: './uploads/avatars',
-        filename: (req, file, cb) => {
-          cb(null, `${randomUUID()}${extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.mimetype)) {
-          return cb(new BadRequestException('Formato inválido'), false);
-        }
-        cb(null, true);
-      },
-      limits: { fileSize: 2 * 1024 * 1024 },
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
     }),
   )
   async uploadAvatar(
@@ -81,9 +84,35 @@ export class UsersController {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }
-    const url = `/uploads/avatars/${file.filename}`;
+    // Formato e extensão vêm dos bytes do arquivo: nome/MIME enviados pelo cliente são ignorados.
+    const kind = detectImage(file.buffer);
+    if (!kind) {
+      throw new BadRequestException('Formato inválido. Envie JPG, PNG ou WebP.');
+    }
+    const name = `${randomUUID()}.${kind.ext}`;
+    await mkdir(join(process.cwd(), 'uploads', 'avatars'), { recursive: true });
+    await writeFile(join(process.cwd(), 'uploads', 'avatars', name), file.buffer);
+    const url = `/uploads/avatars/${name}`;
     await this.usersService.updateProfileImage(req.user.id, url);
     return { profileImage: url };
+  }
+
+  @Post('me/cover')
+  @UseGuards(JwtAuthGuard, OngGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 3 * 1024 * 1024, files: 1, fields: 0 },
+    }),
+  )
+  async uploadCover(@UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    if (!file) throw new BadRequestException('Nenhum arquivo enviado');
+    const kind = detectImage(file.buffer);
+    if (!kind) throw new BadRequestException('Formato inválido. Envie JPG, PNG ou WebP.');
+    const name = `${randomUUID()}.${kind.ext}`;
+    await mkdir(join(process.cwd(), 'uploads', 'covers'), { recursive: true });
+    await writeFile(join(process.cwd(), 'uploads', 'covers', name), stripImageMetadata(file.buffer, kind.mime));
+    return this.usersService.updateCoverImage(req.user.id, `/uploads/covers/${name}`);
   }
 
   @Get('admin-test')
