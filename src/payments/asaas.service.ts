@@ -14,6 +14,16 @@ export interface AsaasPayment {
   dueDate?: string;
 }
 
+/** Erro do provedor com o essencial para decidir (status HTTP e mensagem curta). Nunca carrega chave nem corpo cru. */
+export class AsaasError extends BadGatewayException {
+  constructor(message: string, readonly providerStatus?: number, readonly providerMessage?: string) {
+    super(message);
+  }
+}
+
+export interface AsaasSubaccount { id: string; walletId: string; apiKey: string }
+export interface AsaasAccountStatus { general: string; commercialInfo?: string; bankAccountInfo?: string; documentation?: string }
+
 /** Cliente do Asaas. Sandbox por padrão; produção só com ASAAS_ENV=production explícito. */
 @Injectable()
 export class AsaasService {
@@ -23,8 +33,9 @@ export class AsaasService {
     return process.env.ASAAS_ENV === 'production' ? URLS.production : URLS.sandbox;
   }
 
-  private async call<T>(method: 'get' | 'post' | 'delete', path: string, data?: object): Promise<T> {
-    const key = process.env.ASAAS_API_KEY;
+  /** `apiKey` é a credencial da subconta; sem ela, usa a chave da conta da plataforma (apenas onde isso é intencional). */
+  private async call<T>(method: 'get' | 'post' | 'delete', path: string, data?: object, apiKey?: string): Promise<T> {
+    const key = apiKey ?? process.env.ASAAS_API_KEY;
     if (!key) throw new ServiceUnavailableException('Pagamentos indisponíveis: ASAAS_API_KEY não configurada.');
     const config: AxiosRequestConfig = {
       method, url: `${this.baseUrl}${path}`, data, timeout: 10000, validateStatus: () => true,
@@ -35,12 +46,13 @@ export class AsaasService {
       res = await axios.request(config);
     } catch (e) {
       this.logger.warn(`Asaas ${method.toUpperCase()} ${path} falhou: ${(e as Error).message}`);
-      throw new BadGatewayException('Provedor de pagamento indisponível. Tente novamente.');
+      throw new AsaasError('Provedor de pagamento indisponível. Tente novamente.');
     }
     if (res.status >= 400) {
       // Nunca repassa o corpo cru nem a chave; registra só o essencial.
       this.logger.warn(`Asaas ${method.toUpperCase()} ${path} → HTTP ${res.status} ${JSON.stringify(res.data?.errors ?? '')}`);
-      throw new BadGatewayException(res.status === 400 ? `Pagamento recusado: ${res.data?.errors?.[0]?.description ?? 'dados inválidos'}` : 'Provedor de pagamento indisponível. Tente novamente.');
+      const detail = String(res.data?.errors?.[0]?.description ?? res.data?.message ?? '').slice(0, 300) || undefined;
+      throw new AsaasError(res.status === 400 ? `Pagamento recusado: ${res.data?.errors?.[0]?.description ?? 'dados inválidos'}` : 'Provedor de pagamento indisponível. Tente novamente.', res.status, detail);
     }
     return res.data as T;
   }
@@ -78,5 +90,30 @@ export class AsaasService {
   async deletePayment(id: string) {
     const d = await this.call<{ deleted?: boolean }>('delete', `/payments/${encodeURIComponent(id)}`);
     return this.expect<{ deleted: boolean }>(d, d?.deleted === true);
+  }
+
+  // ---------- Subcontas (credenciais por ONG) ----------
+
+  /** Cria a subconta (usa a chave da conta da plataforma, que precisa ser pessoa jurídica). A apiKey só vem agora. */
+  async createSubaccount(p: Record<string, unknown>): Promise<AsaasSubaccount> {
+    const d = await this.call<any>('post', '/accounts', p);
+    // A documentação mostra a chave em accessToken.apiKey, e a prosa a cita no topo: aceitamos os dois formatos.
+    const apiKey = d?.accessToken?.apiKey ?? d?.apiKey;
+    return this.expect<AsaasSubaccount>(
+      { id: d?.id, walletId: d?.walletId, apiKey },
+      typeof d?.id === 'string' && typeof d?.walletId === 'string' && typeof apiKey === 'string' && apiKey.length >= 20,
+    );
+  }
+
+  /** Situação cadastral da subconta, consultada com a credencial dela. */
+  async getAccountStatus(apiKey: string): Promise<AsaasAccountStatus> {
+    const d = await this.call<any>('get', '/myAccount/status', undefined, apiKey);
+    return this.expect<AsaasAccountStatus>(d, typeof d?.general === 'string');
+  }
+
+  /** Somente Sandbox: aprova a subconta (a aprovação de produção é cadastral e feita pelo Asaas). */
+  async approveSandboxSubaccount(accountId: string) {
+    if (process.env.ASAAS_ENV === 'production') throw new ServiceUnavailableException('Aprovação manual existe apenas no Sandbox.');
+    return this.call<unknown>('post', `/accounts/${encodeURIComponent(accountId)}/approve`);
   }
 }

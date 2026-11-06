@@ -58,6 +58,7 @@ describe('Migrations', () => {
   });
 
   it('down() reverte na ordem inversa e up() reaplica (ida e volta)', async () => {
+    await ds.undoLastMigration(); // OrganizationPaymentAccounts
     await ds.undoLastMigration(); // UserCoverImage
     await ds.undoLastMigration(); // PublicacoesTransparencia
     expect(await tables()).toBeGreaterThan(0);

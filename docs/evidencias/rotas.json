@@ -1,5 +1,5 @@
 {
- "total": 127,
+ "total": 132,
  "publicas": [
   "GET /campaigns",
   "GET /campaigns/:id",
@@ -555,6 +555,56 @@
    "rota": "POST /webhooks/asaas",
    "guards": [],
    "roles": null
+  },
+  {
+   "rota": "GET /payment-accounts/me",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ONG"
+   ]
+  },
+  {
+   "rota": "GET /admin/payment-accounts/:organizationId",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "POST /admin/payment-accounts/:organizationId",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "POST /admin/payment-accounts/:organizationId/refresh",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
+  },
+  {
+   "rota": "POST /admin/payment-accounts/:organizationId/sandbox-approve",
+   "guards": [
+    "JwtAuthGuard",
+    "RolesGuard"
+   ],
+   "roles": [
+    "ADMIN"
+   ]
   },
   {
    "rota": "GET /my/accountability/summary",

@@ -20,6 +20,7 @@ import { OrganizationExternalCheck } from '../organizations/entities/organizatio
 import { Campaign } from '../campaigns/entities/campaign.entity';
 import { Donation } from '../donations/entities/donation.entity';
 import { PaymentEvent } from '../payments/payment-event.entity';
+import { OrganizationPaymentAccount } from '../payments/entities/organization-payment-account.entity';
 import { Expense, ExpenseDocument } from '../accountability/entities/expense.entity';
 import { DeliveryRecord, DeliveryEvidence } from '../accountability/entities/delivery.entity';
 
@@ -48,6 +49,7 @@ export const ENTITIES = [
   Campaign,
   Donation,
   PaymentEvent,
+  OrganizationPaymentAccount,
   Expense,
   ExpenseDocument,
   DeliveryRecord,

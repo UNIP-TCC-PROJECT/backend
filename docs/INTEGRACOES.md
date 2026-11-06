@@ -41,3 +41,25 @@ As URLs são lidas do ambiente no momento do uso (o `.env` só é carregado depo
 ## Variáveis de ambiente (somente backend, nunca no frontend nem no Git)
 
 `ASAAS_ENV`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `PORTAL_TRANSPARENCIA_API_KEY`; opcionais: `BRASILAPI_URL`, `OPENCNPJ_URL`, `MAPA_OSC_URL`, `TRANSFEREGOV_URL`, `PORTAL_TRANSPARENCIA_URL`. Ver `.env.example`. Os logs registram só status/mensagem, nunca chaves.
+
+## Subcontas Asaas por ONG (Etapa 1 da nova arquitetura de pagamentos)
+
+Cada ONG aprovada ganha uma **subconta própria** (`organization_payment_accounts`, uma por organização). As cobranças da
+Etapa 2 serão criadas com a credencial dessa subconta; **não existe retorno à conta da plataforma**: sem subconta ATIVA, do
+ambiente atual e com credencial íntegra, `PaymentAccountsService.credentialsFor()` lança erro e a doação é recusada.
+
+- **Abertura**: `POST /admin/payment-accounts/:organizationId {incomeValue}` (somente administrador, ONG precisa estar
+  `APROVADA` e com CNPJ, e-mail, telefone e endereço completos; o que faltar vem em `missing`, nada é inventado).
+  A linha é reservada no banco antes de chamar o Asaas (índice único por organização), então chamadas simultâneas não
+  criam duas contas. Falha no provedor → `FALHA`; só se pode repetir quando nada chegou a ser criado lá.
+- **Credencial**: a `apiKey` devolvida (uma única vez) é cifrada com AES-256-GCM usando `PAYMENT_ENCRYPTION_KEY`, amarrada
+  ao id da organização (texto copiado para outra ONG não abre). Nunca aparece em respostas, logs ou auditoria.
+- **Situação**: `POST .../refresh` consulta `GET /myAccount/status` com a chave da própria subconta (`APPROVED` → ATIVA,
+  `REJECTED` → REJEITADA, 401 → BLOQUEADA, o resto → AGUARDANDO_APROVACAO). Só ATIVA libera doações.
+  No Sandbox existe ainda `POST .../sandbox-approve` (`POST /accounts/{id}/approve`); em produção é proibido.
+- **ONG**: `GET /payment-accounts/me` devolve apenas `status`, `canReceiveDonations` e uma mensagem.
+- **Webhooks da subconta**: com `ASAAS_WEBHOOK_URL` definida, a criação já cadastra o webhook da subconta (mesmo
+  `ASAAS_WEBHOOK_TOKEN`). Ainda não confirmado no Sandbox real; a Etapa 2 ajusta a reconciliação para consultar o
+  pagamento com a credencial da subconta correspondente.
+- **Requisitos externos**: a conta Asaas dona de `ASAAS_API_KEY` precisa ser **pessoa jurídica (CNPJ)**. Com conta CPF o
+  Asaas responde 403 (verificado no Sandbox em 05/11/2026).
