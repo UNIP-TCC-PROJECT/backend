@@ -23,7 +23,13 @@ import { BCRYPT_ROUNDS } from '../auth/auth.service';
 import { CreateAdminDto } from '../admin/dto/create-admin-dto';
 
 // Nunca devolve hash de senha nem campos internos (segredos MFA, vínculo com o provedor, contadores de bloqueio).
-const INTERNAL_FIELDS = ['password', 'mfaSecret', 'asaasCustomerId', 'failedLoginAttempts', 'lockedUntil'] as const;
+const INTERNAL_FIELDS = [
+  'password',
+  'mfaSecret',
+  'asaasCustomerId',
+  'failedLoginAttempts',
+  'lockedUntil',
+] as const;
 export function sanitizeUser<T extends object>(user: T) {
   const copy = { ...user } as Record<string, unknown>;
   for (const f of INTERNAL_FIELDS) delete copy[f];
@@ -90,7 +96,10 @@ export class UsersService {
   }
 
   async updateCoverImage(userId: number, coverImage: string) {
-    const user = await this.repo.findOne({ where: { id: userId, type: UserType.ONG }, select: ['id'] });
+    const user = await this.repo.findOne({
+      where: { id: userId, type: UserType.ONG },
+      select: ['id'],
+    });
     if (!user) throw new NotFoundException('ONG não encontrada');
     await this.repo.update(userId, { coverImage });
     return { coverImage };
@@ -219,11 +228,7 @@ export class UsersService {
     return sanitizeUser(updatedUser);
   }
 
-  async updateOng(
-    id: number,
-    data: any,
-    requestingUserId: number,
-  ) {
+  async updateOng(id: number, data: any, requestingUserId: number) {
     const ong = await this.repo.findOne({
       where: {
         id,
@@ -236,14 +241,18 @@ export class UsersService {
     }
 
     if (ong.id !== requestingUserId) {
-      throw new ForbiddenException(
-        'Você só pode editar o próprio perfil',
-      );
+      throw new ForbiddenException('Você só pode editar o próprio perfil');
     }
 
     // O CNPJ foi verificado no cadastro (e sustenta o cadastro verificado): trocá-lo exige nova validação pela administração.
-    if (data?.cnpj !== undefined && String(data.cnpj).replace(/\D/g, '') !== String(ong.cnpj ?? '').replace(/\D/g, '')) {
-      throw new BadRequestException('O CNPJ não pode ser alterado. Solicite a alteração à administração da plataforma.');
+    if (
+      data?.cnpj !== undefined &&
+      String(data.cnpj).replace(/\D/g, '') !==
+        String(ong.cnpj ?? '').replace(/\D/g, '')
+    ) {
+      throw new BadRequestException(
+        'O CNPJ não pode ser alterado. Solicite a alteração à administração da plataforma.',
+      );
     }
     delete data.cnpj;
 

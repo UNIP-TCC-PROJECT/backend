@@ -96,7 +96,10 @@ export class CreateUserDto {
 
   @ValidateIf((data) => data.type === UserType.ONG)
   @IsString()
-  @Matches(/^\d{1,12}-?[\dxX]$/, { message: 'Conta inválida: use apenas números e o dígito (até 13 caracteres).' })
+  @Matches(/^\d{1,12}-?[\dxX]$/, {
+    message:
+      'Conta inválida: use apenas números e o dígito (até 13 caracteres).',
+  })
   account!: string;
 
   @ValidateIf((data) => data.type === UserType.ONG)
