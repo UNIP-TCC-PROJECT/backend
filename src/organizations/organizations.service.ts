@@ -18,6 +18,7 @@ import type { RequestUser } from '../common/request-context';
 import { ReviewStatus } from '../common/stored-file.base';
 import { User, UserType } from '../users/entities/user.entity';
 import { ExternalChecksService } from './external-checks.service';
+import { CnpjVerificationService } from '../cnpj-verification/cnpj-verification.service';
 import { isValidCnpj, onlyDigits } from './cnpj.util';
 import {
   CheckSource,
@@ -66,6 +67,7 @@ export class OrganizationsService implements OnModuleInit {
     @InjectDataSource() private dataSource: DataSource,
     private audit: AuditService,
     private checks: ExternalChecksService,
+    private cnpjVerification: CnpjVerificationService,
   ) {}
 
   async onModuleInit() {
@@ -88,22 +90,50 @@ export class OrganizationsService implements OnModuleInit {
     if (await this.orgs.existsBy({ cnpj }))
       throw new ConflictException('CNPJ já vinculado a outra organização.');
 
-    const org = await this.orgs.save(
-      this.orgs.create({
-        ownerId: userId,
-        cnpj,
-        legalName: user.legalName ?? user.name,
-        tradeName: user.name,
-        description: user.description ?? null,
-        email: user.email,
-        phone: onlyDigits(user.phone) || null,
-        zip: onlyDigits(user.zip) || null,
-        street: user.street ?? null,
-        district: user.district ?? null,
-        city: user.city ?? null,
-        state: user.state?.slice(0, 2).toUpperCase() ?? null,
-      }),
-    );
+    const dadosCnpj = await this.cnpjVerification.consultarCnpj(cnpj);
+    const razaoSocial = dadosCnpj.razaoSocial?.trim();
+
+    if (!razaoSocial) {
+      throw new BadRequestException(
+        'Não foi possível obter a razão social a partir do CNPJ.',
+      );
+    }
+
+    let org: Organization;
+
+    try {
+      org = await this.orgs.save(
+        this.orgs.create({
+          ownerId: userId,
+          cnpj,
+          legalName: razaoSocial,
+          tradeName: dadosCnpj.nomeFantasia?.trim() || null,
+          legalRepName: user.legalName ?? null,
+          legalRepCpf: user.legalCpf ?? null,
+          description: user.description ?? null,
+          email: user.email,
+          phone: onlyDigits(user.phone) || null,
+          zip: onlyDigits(user.zip) || null,
+          street: user.street ?? null,
+          district: user.district ?? null,
+          city: user.city ?? null,
+          state: user.state?.slice(0, 2).toUpperCase() ?? null,
+        }),
+      );
+    } catch (error) {
+      const code = (error as { driverError?: { code?: string } }).driverError
+        ?.code;
+
+      if (code === '23505') {
+        const createdByAnotherRequest = await this.orgs.findOneBy({
+          ownerId: userId,
+        });
+
+        if (createdByAnotherRequest) return createdByAnotherRequest;
+      }
+
+      throw error;
+    }
     await this.audit.log({
       actor: { id: userId, type: user.type },
       action: 'ORG_CREATED',
@@ -123,6 +153,46 @@ export class OrganizationsService implements OnModuleInit {
       );
     }
     return org;
+  }
+
+  /**
+   * Capacidade editorial da ONG. A checagem automática do CNPJ permite submeter conteúdo
+   * para análise; a publicação sem fila requer também a aprovação institucional vigente
+   * e os documentos obrigatórios aprovados (Medalha Branca).
+   */
+  async contentAccess(userId: number) {
+    const user = await this.users.findOne({
+      where: { id: userId, type: UserType.ONG },
+      select: { id: true, status: true, preVerificacaoCnpj: true },
+    });
+    if (!user || user.status !== 'ATIVO')
+      throw new ForbiddenException('Apenas ONGs ativas podem cadastrar conteúdo.');
+
+    const org = await this.ofOwner(userId);
+    const currentDocuments = await this.docs.find({
+      select: { type: true, status: true },
+      where: { organizationId: org.id, supersededAt: IsNull() },
+    });
+    const requiredDocumentsApproved = REQUIRED_DOCUMENT_TYPES.every((type) =>
+      currentDocuments.some((doc) => doc.type === type && doc.status === ReviewStatus.APROVADO),
+    );
+    const checks = await this.checks.latest(org.id);
+    const cadastralCheckExists = checks.some(
+      (check) => check.source === CheckSource.BRASILAPI && !!check.data,
+    );
+    const cnpjVerified = user.preVerificacaoCnpj === true;
+    const medalhaBranca =
+      cnpjVerified &&
+      org.status === OrganizationStatus.APROVADA &&
+      requiredDocumentsApproved &&
+      cadastralCheckExists;
+
+    return {
+      level: medalhaBranca ? 'MEDALHA_BRANCA' : cnpjVerified ? 'CNPJ_CONFERIDO' : 'SEM_VERIFICACAO',
+      canSubmit: cnpjVerified,
+      canPublishWithoutReview: medalhaBranca,
+      organizationId: org.id,
+    } as const;
   }
 
   async missingForSubmission(org: Organization) {

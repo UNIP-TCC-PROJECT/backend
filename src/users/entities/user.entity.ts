@@ -52,8 +52,8 @@ status!: UserStatus;
   cnpj?: string;
 
   /**
-   * Resultado da triagem do CNPJ feita no cadastro (histórico). Não é o selo exibido ao público: o "cadastro
-   * verificado" é calculado a partir da validação institucional (ver organizations/registration-verification.ts).
+   * Resultado da verificação automática feita no cadastro com os dados públicos do CNPJ.
+   * É independente da validação institucional de documentos, usada no selo "Cadastro verificado".
    */
   @Column({ name: 'medalhaVerde', default: false })
   preVerificacaoCnpj!: boolean;

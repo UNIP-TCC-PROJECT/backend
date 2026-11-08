@@ -10,6 +10,7 @@ import { ReasonDto } from '../organizations/organizations.dto';
 import { UserType } from '../users/entities/user.entity';
 import { CampaignStatusDto, CreateCampaignDto, UpdateCampaignDto } from './campaigns.dto';
 import { CampaignsService } from './campaigns.service';
+import { ReviewContentDto } from '../common/review-content.dto';
 
 @Controller('campaigns')
 export class PublicCampaignsController {
@@ -73,6 +74,16 @@ export class AdminCampaignsController {
   @Get()
   list() {
     return this.svc.listAll();
+  }
+
+  @Get('pending-review')
+  pendingReview() {
+    return this.svc.listPendingReview();
+  }
+
+  @Post(':id/review')
+  review(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviewContentDto) {
+    return this.svc.review(actorOf(req), id, dto.decision, dto.reason, req.ip);
   }
 
   @Post(':id/suspend')

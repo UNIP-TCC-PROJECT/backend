@@ -57,6 +57,12 @@ export class OrganizationsController {
     return this.svc.checksStatus(req.user.id);
   }
 
+  @Get('me/content-access')
+  @Roles(UserType.ONG)
+  contentAccess(@Req() req: any) {
+    return this.svc.contentAccess(req.user.id);
+  }
+
   @Patch('me')
   @Roles(UserType.ONG)
   @UseGuards(OngGuard)

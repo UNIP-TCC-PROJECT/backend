@@ -25,6 +25,8 @@ import { nomeDocumento } from '../medalhas/medalha-branca.upload';
 import type { RequestUser } from '../common/request-context';
 import { ReviewActionDto } from '../accountability/accountability.dto';
 import { CATEGORY_LABEL, Category, Classification, MAX_ANEXOS_POR_PUBLICACAO, MAX_ANEXO_BYTES } from './publicacoes.constants';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { ContentReviewStatus, validateContentDecision, type ContentReviewDecision } from '../common/content-moderation';
 
 const NOT_FOUND = 'Publicação não encontrada.';
 const FILE_META = { id: true, publicacaoId: true, organizationId: true, kind: true, name: true, mime: true, size: true, sha256: true, status: true, imageConsent: true, publishable: true, reviewReason: true, reviewedAt: true, createdAt: true } as const;
@@ -55,6 +57,7 @@ export class PublicacoesService {
     @InjectRepository(DeliveryEvidence) private readonly evidences: Repository<DeliveryEvidence>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly audit: AuditService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   // ---------- Criação (ONG) ----------
@@ -85,6 +88,8 @@ export class PublicacoesService {
 
   async create(ongId: number, dto: CreatePublicacaoDto, image?: Express.Multer.File, ip?: string) {
     const ong = await this.activeOng(ongId);
+    const access = await this.organizations.contentAccess(ongId);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de enviar publicações.');
     const org = await this.orgs.findOneBy({ ownerId: ong.id });
     const links = await this.resolveLinks(org, dto);
     const file = image ? prepareAnexo(image) : null;
@@ -94,12 +99,12 @@ export class PublicacoesService {
     if (file?.kind === 'DOCUMENTO') throw new BadRequestException('No campo de imagem envie JPG, PNG ou WebP; documentos entram como anexo da publicação.');
 
     const saved = await this.dataSource.transaction(async (m) => {
-      const p = await m.save(Publicacao, m.create(Publicacao, { ongId: ong.id, organizationId: org?.id ?? null, description: dto.description, category: dto.category ?? 'ATUALIZACAO', imageUrl: null, ...links }));
-      await this.audit.log({ actor: { id: ong.id, type: UserType.ONG }, action: 'PUBLICATION_CREATED', entityType: 'publicacao', entityId: p.id, organizationId: org?.id ?? null, metadata: { category: p.category, ...links }, ip }, m);
+      const p = await m.save(Publicacao, m.create(Publicacao, { ongId: ong.id, organizationId: org?.id ?? null, description: dto.description, category: dto.category ?? 'ATUALIZACAO', imageUrl: null, reviewStatus: access.canPublishWithoutReview ? ContentReviewStatus.APROVADA : ContentReviewStatus.PENDENTE, reviewedBy: null, reviewedAt: access.canPublishWithoutReview ? new Date() : null, ...links }));
+      await this.audit.log({ actor: { id: ong.id, type: UserType.ONG }, action: 'PUBLICATION_CREATED', entityType: 'publicacao', entityId: p.id, organizationId: org?.id ?? null, metadata: { category: p.category, reviewStatus: p.reviewStatus, ...links }, ip }, m);
       if (file) await this.saveAnexo(m, p, file, ong.id, !!dto.imageConsent, ip);
       return p;
     });
-    return { id: saved.id, category: saved.category, createdAt: saved.createdAt, ...links, attachmentNote: file ? 'A imagem aparece publicamente depois da análise da plataforma.' : null };
+    return { id: saved.id, category: saved.category, reviewStatus: saved.reviewStatus, createdAt: saved.createdAt, ...links, message: saved.reviewStatus === ContentReviewStatus.PENDENTE ? 'Publicação enviada para análise; ela ficará visível após aprovação.' : 'Publicação disponível.', attachmentNote: file ? 'A imagem aparece publicamente depois da análise do arquivo.' : null };
   }
 
   private async saveAnexo(m: import('typeorm').EntityManager, p: Publicacao, f: ReturnType<typeof prepareAnexo>, userId: number, consent: boolean, ip?: string) {
@@ -123,8 +128,9 @@ export class PublicacoesService {
 
   private publicQuery() {
     return this.repo.createQueryBuilder('p')
-      .innerJoin(Organization, 'o', 'o.id = p."organizationId" AND o.status = :ok', { ok: OrganizationStatus.APROVADA })
+      .innerJoin(User, 'owner', 'owner.id = p."ongId" AND owner.status = :active AND owner."medalhaVerde" = true', { active: UserStatus.ATIVO })
       .leftJoinAndSelect('p.ong', 'ong')
+      .where('p."reviewStatus" = :approved', { approved: ContentReviewStatus.APROVADA })
       .select(['p', 'ong.id', 'ong.name', 'ong.profileImage'])
       .orderBy('p.createdAt', 'DESC').addOrderBy('p.id', 'DESC');
   }
@@ -220,6 +226,30 @@ export class PublicacoesService {
 
   listPendingFiles() {
     return this.anexos.find({ select: FILE_META, where: { status: In([AccStatus.ENVIADA, AccStatus.EM_ANALISE]) }, order: { createdAt: 'ASC' }, take: 200 });
+  }
+
+  listPendingPublications() {
+    return this.repo.find({
+      where: { reviewStatus: ContentReviewStatus.PENDENTE },
+      relations: { ong: true },
+      select: { id: true, ongId: true, description: true, category: true, createdAt: true, reviewStatus: true, ong: { id: true, name: true } },
+      order: { createdAt: 'ASC' },
+      take: 200,
+    });
+  }
+
+  async reviewPublication(admin: RequestUser, id: number, decision: ContentReviewDecision, reason?: string, ip?: string) {
+    validateContentDecision(decision, reason);
+    const publication = await this.repo.findOneBy({ id });
+    if (!publication) throw new NotFoundException(NOT_FOUND);
+    if (publication.reviewStatus !== ContentReviewStatus.PENDENTE) throw new BadRequestException('A publicação já foi analisada.');
+    publication.reviewStatus = decision === 'APROVAR' ? ContentReviewStatus.APROVADA : ContentReviewStatus.REPROVADA;
+    publication.reviewReason = decision === 'REPROVAR' ? reason!.trim() : null;
+    publication.reviewedBy = admin.id;
+    publication.reviewedAt = new Date();
+    await this.repo.save(publication);
+    await this.audit.log({ actor: admin, action: 'PUBLICATION_REVIEWED', entityType: 'publicacao', entityId: String(id), organizationId: publication.organizationId, metadata: { decision, reason: publication.reviewReason }, ip });
+    return { id, reviewStatus: publication.reviewStatus, reviewReason: publication.reviewReason };
   }
 
   async adminFile(id: string) {

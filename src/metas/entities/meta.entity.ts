@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 
 import { User } from '../../users/entities/user.entity';
+import { ContentReviewStatus } from '../../common/content-moderation';
 
 export enum MetaType {
   FINANCEIRA = 'FINANCEIRA',
@@ -88,4 +89,16 @@ export class Meta {
 
   @Column()
   ongId!: number;
+
+  @Column({ type: 'varchar', default: ContentReviewStatus.APROVADA })
+  reviewStatus!: ContentReviewStatus;
+
+  @Column({ type: 'text', nullable: true })
+  reviewReason!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  reviewedBy!: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt!: Date | null;
 }

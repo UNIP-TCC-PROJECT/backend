@@ -7,9 +7,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Meta } from './entities/meta.entity';
-import { User, UserType } from '../users/entities/user.entity';
+import { User, UserStatus, UserType } from '../users/entities/user.entity';
 import { CreateMetaDto } from './dto/create-meta.dto';
 import { UpdateMetaDto } from './dto/update-meta.dto';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { ContentReviewStatus, validateContentDecision, type ContentReviewDecision } from '../common/content-moderation';
+import type { RequestUser } from '../common/request-context';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class MetasService {
@@ -19,6 +23,8 @@ export class MetasService {
 
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private organizations: OrganizationsService,
+    private audit: AuditService,
   ) {}
 
   async findByOng(ongId: number) {
@@ -26,6 +32,8 @@ export class MetasService {
       where: {
         id: ongId,
         type: UserType.ONG,
+        status: UserStatus.ATIVO,
+        preVerificacaoCnpj: true,
       },
     });
 
@@ -37,6 +45,7 @@ export class MetasService {
       where: {
         ongId,
         active: true,
+        reviewStatus: ContentReviewStatus.APROVADA,
       },
       order: {
         id: 'DESC',
@@ -51,7 +60,7 @@ export class MetasService {
     });
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, requesterId: number) {
     const meta = await this.metaRepo.findOne({
       where: { id },
     });
@@ -60,20 +69,20 @@ export class MetasService {
       throw new NotFoundException('Meta não encontrada');
     }
 
+    if (meta.reviewStatus !== ContentReviewStatus.APROVADA && meta.ongId !== requesterId)
+      throw new NotFoundException('Meta não encontrada');
+
+    if (meta.reviewStatus === ContentReviewStatus.APROVADA) {
+      const owner = await this.userRepo.findOne({ where: { id: meta.ongId, type: UserType.ONG, status: UserStatus.ATIVO, preVerificacaoCnpj: true }, select: { id: true } });
+      if (!owner) throw new NotFoundException('Meta não encontrada');
+    }
+
     return meta;
   }
 
   async create(ongId: number, data: CreateMetaDto) {
-    const ong = await this.userRepo.findOne({
-      where: {
-        id: ongId,
-        type: UserType.ONG,
-      },
-    });
-
-    if (!ong) {
-      throw new NotFoundException('ONG não encontrada');
-    }
+    const access = await this.organizations.contentAccess(ongId);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de cadastrar metas.');
 
     const meta = this.metaRepo.create({
       title: data.title,
@@ -92,12 +101,16 @@ export class MetasService {
       details: data.details,
       priority: data.priority,
       image: data.image,
+      reviewStatus: access.canPublishWithoutReview ? ContentReviewStatus.APROVADA : ContentReviewStatus.PENDENTE,
+      reviewedAt: access.canPublishWithoutReview ? new Date() : null,
     });
 
     return this.metaRepo.save(meta);
   }
 
   async update(id: number, ongId: number, data: UpdateMetaDto) {
+    const access = await this.organizations.contentAccess(ongId);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de editar metas.');
     const meta = await this.findOwnedMeta(id, ongId);
 
     if (data.title !== undefined) meta.title = data.title;
@@ -119,6 +132,13 @@ export class MetasService {
     }
     if (data.image !== undefined) meta.image = data.image;
 
+    if (!access.canPublishWithoutReview) {
+      meta.reviewStatus = ContentReviewStatus.PENDENTE;
+      meta.reviewedAt = null;
+      meta.reviewedBy = null;
+      meta.reviewReason = null;
+    }
+
     return this.metaRepo.save(meta);
   }
 
@@ -131,7 +151,8 @@ export class MetasService {
   }
 
   private async findOwnedMeta(id: number, ongId: number) {
-    const meta = await this.findOne(id);
+    const meta = await this.metaRepo.findOne({ where: { id } });
+    if (!meta) throw new NotFoundException('Meta não encontrada');
 
     if (meta.ongId !== ongId) {
       throw new ForbiddenException(
@@ -140,5 +161,23 @@ export class MetasService {
     }
 
     return meta;
+  }
+
+  listPendingReview() {
+    return this.metaRepo.find({ where: { reviewStatus: ContentReviewStatus.PENDENTE }, relations: { ong: true }, order: { id: 'ASC' }, take: 200 });
+  }
+
+  async review(admin: RequestUser, id: number, decision: ContentReviewDecision, reason?: string) {
+    validateContentDecision(decision, reason);
+    const meta = await this.metaRepo.findOneBy({ id });
+    if (!meta) throw new NotFoundException('Meta não encontrada.');
+    if (meta.reviewStatus !== ContentReviewStatus.PENDENTE) throw new ForbiddenException('A meta já foi analisada.');
+    meta.reviewStatus = decision === 'APROVAR' ? ContentReviewStatus.APROVADA : ContentReviewStatus.REPROVADA;
+    meta.reviewReason = decision === 'REPROVAR' ? reason!.trim() : null;
+    meta.reviewedBy = admin.id;
+    meta.reviewedAt = new Date();
+    await this.metaRepo.save(meta);
+    await this.audit.log({ actor: admin, action: 'META_REVIEWED', entityType: 'meta', entityId: String(id), metadata: { decision, reason: meta.reviewReason } });
+    return { id, reviewStatus: meta.reviewStatus, reviewReason: meta.reviewReason };
   }
 }

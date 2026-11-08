@@ -18,6 +18,11 @@ import { OngGuard } from '../auth/ong.guard';
 import { MetasService } from './metas.service';
 import { CreateMetaDto } from './dto/create-meta.dto';
 import { UpdateMetaDto } from './dto/update-meta.dto';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserType } from '../users/entities/user.entity';
+import { actorOf } from '../common/request-context';
+import { ReviewContentDto } from '../common/review-content.dto';
 
 @Controller('metas')
 export class MetasController {
@@ -29,6 +34,13 @@ export class MetasController {
     return this.metasService.findMine(req.user.id);
   }
 
+  @Get('admin/pending-review')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
+  pendingReview() {
+    return this.metasService.listPendingReview();
+  }
+
   @Get('ong/:id')
   findByOng(@Param('id', ParseIntPipe) id: number) {
     return this.metasService.findByOng(id);
@@ -36,8 +48,8 @@ export class MetasController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.metasService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
+    return this.metasService.findOne(id, req.user.id);
   }
 
   @Post()
@@ -68,5 +80,12 @@ export class MetasController {
     @Request() req: any,
   ) {
     return this.metasService.deactivate(id, req.user.id);
+  }
+
+  @Post('admin/:id/review')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
+  review(@Request() req: any, @Param('id', ParseIntPipe) id: number, @Body() dto: ReviewContentDto) {
+    return this.metasService.review(actorOf(req), id, dto.decision, dto.reason);
   }
 }

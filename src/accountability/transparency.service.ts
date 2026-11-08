@@ -28,6 +28,7 @@ import {
 } from '../organizations/entities/organization.entity';
 import { onlyDigits } from '../organizations/cnpj.util';
 import { Publicacao } from '../publicacoes/entities/publicacao.entity';
+import { User, UserType } from '../users/entities/user.entity';
 import { CATEGORY_LABEL, Category } from '../publicacoes/publicacoes.constants';
 import { AccountabilityService } from './accountability.service';
 import { evaluateTransparency, LevelInput } from './transparency-level';
@@ -127,6 +128,7 @@ export interface TimelineEvent {
  *  - textos livres passam por máscara de CPF/e-mail/telefone.
  */
 export interface SelosOng {
+  verificacaoCnpj: { verificado: boolean };
   cadastroVerificado:
     | { verificado: false }
     | {
@@ -159,6 +161,7 @@ export class TransparencyService {
     private evidences: Repository<DeliveryEvidence>,
     @InjectRepository(AuditLog) private auditLogs: Repository<AuditLog>,
     @InjectRepository(Publicacao) private pubs: Repository<Publicacao>,
+    @InjectRepository(User) private users: Repository<User>,
     private acc: AccountabilityService,
   ) {}
 
@@ -816,23 +819,39 @@ export class TransparencyService {
   }
 
   /**
-   * Selos públicos de ONGs, por id do usuário-dono. Devolve somente o que a tela precisa para exibir as duas
-   * medalhas — nunca documentos, dados pessoais, justificativas ou detalhes administrativos.
-   * As duas avaliações são independentes e calculadas na hora (atualizam sozinhas).
+   * Selos e indicadores públicos de ONGs, por id do usuário-dono. Devolve somente o que a tela precisa para
+   * exibir a verificação de CNPJ, a validação institucional e o nível de transparência — nunca documentos,
+   * dados pessoais, justificativas ou detalhes administrativos. Os três indicadores têm critérios distintos.
    */
   async selos(ownerIds: number[]) {
-    const orgs = ownerIds.length
-      ? await this.orgs.find({ where: { ownerId: In(ownerIds) } })
-      : [];
+    const [orgs, owners] = ownerIds.length
+      ? await Promise.all([
+          this.orgs.find({ where: { ownerId: In(ownerIds) } }),
+          this.users.find({
+            where: { id: In(ownerIds), type: UserType.ONG },
+            select: { id: true, preVerificacaoCnpj: true },
+          }),
+        ])
+      : [[], []];
     const byOwner = new Map(orgs.map((o) => [o.ownerId, o]));
+    const cnpjByOwner = new Map(
+      owners.map((user) => [user.id, user.preVerificacaoCnpj]),
+    );
     const result: Record<number, SelosOng> = {};
     // Em lotes pequenos para não esgotar as conexões do banco.
     for (let i = 0; i < ownerIds.length; i += 5) {
       await Promise.all(
         ownerIds.slice(i, i + 5).map(async (ownerId) => {
           const org = byOwner.get(ownerId);
+          const verificacaoCnpj = {
+            verificado: cnpjByOwner.get(ownerId) === true,
+          };
           if (!org) {
-            result[ownerId] = { cadastroVerificado: { verificado: false }, nivelTransparencia: null };
+            result[ownerId] = {
+              verificacaoCnpj,
+              cadastroVerificado: { verificado: false },
+              nivelTransparencia: null,
+            };
             return;
           }
           const [checks, docs, approval] = await Promise.all([
@@ -873,6 +892,7 @@ export class TransparencyService {
               ? await this.levelOf(org.id)
               : null;
           result[ownerId] = {
+            verificacaoCnpj,
             cadastroVerificado: reg.verified
               ? {
                   verificado: true,

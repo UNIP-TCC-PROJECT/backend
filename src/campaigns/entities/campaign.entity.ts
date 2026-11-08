@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { bigintTransformer } from '../../common/bigint.transformer';
 import { Organization } from '../../organizations/entities/organization.entity';
+import { ContentReviewStatus } from '../../common/content-moderation';
 
 export enum CampaignStatus {
   RASCUNHO = 'RASCUNHO',
@@ -48,6 +49,18 @@ export class Campaign {
 
   @Column({ type: 'text', nullable: true })
   statusReason!: string | null;
+
+  @Column({ type: 'varchar', default: ContentReviewStatus.APROVADA })
+  reviewStatus!: ContentReviewStatus;
+
+  @Column({ type: 'text', nullable: true })
+  reviewReason!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  reviewedBy!: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt!: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
