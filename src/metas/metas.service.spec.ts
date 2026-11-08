@@ -5,6 +5,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { MetasService } from './metas.service';
 import { Meta } from './entities/meta.entity';
 import { User, UserType } from '../users/entities/user.entity';
+import { OrganizationsService } from '../organizations/organizations.service';
+import { AuditService } from '../audit/audit.service';
 
 describe('MetasService', () => {
   let service: MetasService;
@@ -20,6 +22,12 @@ describe('MetasService', () => {
     findOne: jest.fn(),
   };
 
+  const mockOrganizations = {
+    contentAccess: jest.fn().mockResolvedValue({ canSubmit: true, canPublishWithoutReview: false }),
+  };
+
+  const mockAudit = { log: jest.fn() };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -28,6 +36,8 @@ describe('MetasService', () => {
         MetasService,
         { provide: getRepositoryToken(Meta), useValue: mockMetaRepo },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: OrganizationsService, useValue: mockOrganizations },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 

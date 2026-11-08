@@ -13,6 +13,7 @@ import { Organization } from '../../organizations/entities/organization.entity';
 import { Campaign } from '../../campaigns/entities/campaign.entity';
 import { Expense } from '../../accountability/entities/expense.entity';
 import { DeliveryRecord } from '../../accountability/entities/delivery.entity';
+import { ContentReviewStatus } from '../../common/content-moderation';
 
 @Entity('publicacoes')
 @Index(['ongId', 'createdAt', 'id'])
@@ -64,6 +65,18 @@ export class Publicacao {
 
   @Column({ type: 'int' })
   ongId!: number;
+
+  @Column({ type: 'varchar', default: ContentReviewStatus.APROVADA })
+  reviewStatus!: ContentReviewStatus;
+
+  @Column({ type: 'text', nullable: true })
+  reviewReason!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  reviewedBy!: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt!: Date | null;
 
   @ManyToOne(() => User, {
     nullable: false,

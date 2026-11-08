@@ -133,6 +133,7 @@ export class CnpjVerificationService {
       cnpjEncontrado &&
       situacaoAtiva &&
       naturezaCompativel &&
+      nomeCompativel &&
       analiseCnae.compativel;
 
     return {

@@ -5,11 +5,13 @@ import { MetasService } from './metas.service';
 import { Meta } from './entities/meta.entity';
 import { AuthModule } from '../auth/auth.module';
 import { User } from '../users/entities/user.entity';
+import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Meta, User]),
-    AuthModule
+    AuthModule,
+    OrganizationsModule,
   ],
   controllers: [MetasController],
   providers: [MetasService],

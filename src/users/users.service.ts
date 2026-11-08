@@ -53,22 +53,32 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
     let preVerificacaoCnpj = false;
+    let nomeCadastro = data.name;
 
     if (data.type === UserType.ONG) {
       if (!data.cnpj) {
         throw new BadRequestException('CNPJ é obrigatório para ONGs');
       }
 
-      const verificacao = await this.cnpjVerificationService.consultarCnpj(
+      const dadosCnpj = await this.cnpjVerificationService.consultarCnpj(
         data.cnpj,
         data.name,
       );
 
-      preVerificacaoCnpj = verificacao.verificacao.cnpjCompativel;
+      preVerificacaoCnpj = dadosCnpj.verificacao.cnpjCompativel;
+      nomeCadastro =
+        dadosCnpj.nomeFantasia?.trim() || dadosCnpj.razaoSocial?.trim() || '';
+
+      if (!nomeCadastro) {
+        throw new BadRequestException(
+          'Não foi possível obter o nome da ONG a partir do CNPJ.',
+        );
+      }
     }
 
     const user = this.repo.create({
       ...data,
+      name: nomeCadastro,
       website: normalizeWebsite(data.website),
       ...(data.bankCode ? { bank: BANKS[data.bankCode] } : { bankCode: null }),
       password: hashedPassword,

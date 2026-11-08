@@ -9,9 +9,10 @@ import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../common/request-context';
 import { DonationStatus } from '../donations/entities/donation.entity';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { OrganizationStatus } from '../organizations/entities/organization.entity';
+import { User } from '../users/entities/user.entity';
 import type { CampaignStatusDto, CreateCampaignDto, UpdateCampaignDto } from './campaigns.dto';
 import { Campaign, CampaignStatus } from './entities/campaign.entity';
+import { ContentReviewStatus, validateContentDecision, type ContentReviewDecision } from '../common/content-moderation';
 
 @Injectable()
 export class CampaignsService {
@@ -30,15 +31,18 @@ export class CampaignsService {
   }
 
   async create(user: RequestUser, dto: CreateCampaignDto, ip?: string) {
-    const org = await this.orgs.approvedOfOwner(user.id);
+    const access = await this.orgs.contentAccess(user.id);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de cadastrar campanhas.');
+    const org = await this.orgs.ofOwner(user.id);
     this.assertDates(dto.startsAt, dto.endsAt);
-    const c = await this.repo.save(this.repo.create({ ...dto, startsAt: dto.startsAt ? new Date(dto.startsAt) : null, endsAt: dto.endsAt ? new Date(dto.endsAt) : null, organizationId: org.id }));
+    const c = await this.repo.save(this.repo.create({ ...dto, startsAt: dto.startsAt ? new Date(dto.startsAt) : null, endsAt: dto.endsAt ? new Date(dto.endsAt) : null, organizationId: org.id, reviewStatus: access.canPublishWithoutReview ? ContentReviewStatus.APROVADA : ContentReviewStatus.PENDENTE, reviewedAt: access.canPublishWithoutReview ? new Date() : null }));
     await this.audit.log({ actor: user, action: 'CAMPAIGN_CREATED', entityType: 'campaign', entityId: c.id, organizationId: org.id, ip });
     return c;
   }
 
   async update(user: RequestUser, id: string, dto: UpdateCampaignDto, ip?: string) {
-    await this.orgs.approvedOfOwner(user.id);
+    const access = await this.orgs.contentAccess(user.id);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de editar campanhas.');
     const c = await this.ownedBy(user.id, id);
     if ([CampaignStatus.ENCERRADA, CampaignStatus.SUSPENSA].includes(c.status)) {
       throw new BadRequestException('Campanha encerrada ou suspensa não pode ser editada.');
@@ -46,14 +50,24 @@ export class CampaignsService {
     const fields = Object.keys(dto);
     this.assertDates(dto.startsAt ?? c.startsAt?.toISOString(), dto.endsAt ?? c.endsAt?.toISOString());
     Object.assign(c, dto, dto.startsAt ? { startsAt: new Date(dto.startsAt) } : {}, dto.endsAt ? { endsAt: new Date(dto.endsAt) } : {});
+    if (!access.canPublishWithoutReview) {
+      c.reviewStatus = ContentReviewStatus.PENDENTE;
+      c.reviewedAt = null;
+      c.reviewedBy = null;
+      c.reviewReason = null;
+      if (c.status === CampaignStatus.ATIVA) c.status = CampaignStatus.RASCUNHO;
+    }
     await this.repo.save(c);
     await this.audit.log({ actor: user, action: 'CAMPAIGN_UPDATED', entityType: 'campaign', entityId: id, organizationId: c.organizationId, metadata: { fields }, ip });
     return c;
   }
 
   async setStatus(user: RequestUser, id: string, dto: CampaignStatusDto, ip?: string) {
-    await this.orgs.approvedOfOwner(user.id);
+    const access = await this.orgs.contentAccess(user.id);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de alterar campanhas.');
     const c = await this.ownedBy(user.id, id);
+    if (dto.status === 'ATIVA' && c.reviewStatus !== ContentReviewStatus.APROVADA)
+      throw new ForbiddenException('A campanha precisa ser aprovada pela plataforma antes de ser publicada.');
     const allowed = dto.status === 'ATIVA' ? c.status === CampaignStatus.RASCUNHO : c.status === CampaignStatus.ATIVA;
     if (!allowed) throw new BadRequestException(`Transição ${c.status} → ${dto.status} não permitida.`);
     if (dto.status === 'ATIVA') {
@@ -72,7 +86,8 @@ export class CampaignsService {
 
   /** Grava a imagem de apresentação (JPG/PNG, validada pelos bytes) na pasta pública de uploads. */
   async setImage(user: RequestUser, id: string, file: Express.Multer.File | undefined, ip?: string) {
-    await this.orgs.approvedOfOwner(user.id);
+    const access = await this.orgs.contentAccess(user.id);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de alterar campanhas.');
     const c = await this.ownedBy(user.id, id);
     const kind = detectImage(file?.buffer);
     if (!file || !kind || kind.ext === 'webp' || file.size > 3 * 1024 * 1024) throw new BadRequestException('Envie uma imagem JPG ou PNG de até 3 MB.');
@@ -80,6 +95,13 @@ export class CampaignsService {
     await mkdir(join(process.cwd(), 'uploads', 'campaigns'), { recursive: true });
     await writeFile(join(process.cwd(), 'uploads', 'campaigns', name), file.buffer);
     c.imageUrl = `/uploads/campaigns/${name}`;
+    if (!access.canPublishWithoutReview) {
+      c.reviewStatus = ContentReviewStatus.PENDENTE;
+      c.reviewedAt = null;
+      c.reviewedBy = null;
+      c.reviewReason = null;
+      if (c.status === CampaignStatus.ATIVA) c.status = CampaignStatus.RASCUNHO;
+    }
     await this.repo.save(c);
     await this.audit.log({ actor: user, action: 'CAMPAIGN_UPDATED', entityType: 'campaign', entityId: id, organizationId: c.organizationId, metadata: { fields: ['imageUrl'] }, ip });
     return { imageUrl: c.imageUrl };
@@ -94,13 +116,15 @@ export class CampaignsService {
     return this.ownedBy(userId, id);
   }
 
-  /** Vitrine pública: só campanhas ATIVAS de ONGs APROVADAS, sem dados internos. */
+  /** Vitrine pública: campanhas ativas, analisadas e vinculadas a uma ONG ativa com CNPJ conferido. */
   async listPublic() {
     const rows = await this.repo
       .createQueryBuilder('c')
-      .innerJoin('c.organization', 'o', 'o.status = :ok', { ok: OrganizationStatus.APROVADA })
+      .innerJoin('c.organization', 'o')
+      .innerJoin(User, 'owner', 'owner.id = o."ownerId" AND owner.status = :userActive AND owner."medalhaVerde" = true', { userActive: 'ATIVO' })
       .leftJoin('donations', 'd', 'd.campaignId = c.id AND d.status = :conf', { conf: DonationStatus.CONFIRMADA })
       .where('c.status = :active', { active: CampaignStatus.ATIVA })
+      .andWhere('c."reviewStatus" = :reviewApproved', { reviewApproved: ContentReviewStatus.APROVADA })
       .andWhere('(c."endsAt" IS NULL OR c."endsAt" > now()) AND (c."startsAt" IS NULL OR c."startsAt" <= now())')
       .select(['c.id AS id', 'c.title AS title', 'c.description AS description', 'c.objective AS objective', 'c."imageUrl" AS "imageUrl"', 'c."goalCents" AS "goalCents"', 'c."startsAt" AS "startsAt"', 'c."endsAt" AS "endsAt"', 'o.id AS "organizationId"', 'COALESCE(o."tradeName", o."legalName") AS "organizationName"'])
       .addSelect('COALESCE(SUM(d."amountCents"), 0)', 'raisedCents')
@@ -121,6 +145,24 @@ export class CampaignsService {
 
   listAll() {
     return this.repo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  listPendingReview() {
+    return this.repo.find({ where: { reviewStatus: ContentReviewStatus.PENDENTE }, relations: { organization: true }, order: { createdAt: 'ASC' }, take: 200 });
+  }
+
+  async review(admin: RequestUser, id: string, decision: ContentReviewDecision, reason?: string, ip?: string) {
+    validateContentDecision(decision, reason);
+    const campaign = await this.repo.findOneBy({ id });
+    if (!campaign) throw new NotFoundException('Campanha não encontrada.');
+    if (campaign.reviewStatus !== ContentReviewStatus.PENDENTE) throw new BadRequestException('A campanha já foi analisada.');
+    campaign.reviewStatus = decision === 'APROVAR' ? ContentReviewStatus.APROVADA : ContentReviewStatus.REPROVADA;
+    campaign.reviewReason = decision === 'REPROVAR' ? reason!.trim() : null;
+    campaign.reviewedBy = admin.id;
+    campaign.reviewedAt = new Date();
+    await this.repo.save(campaign);
+    await this.audit.log({ actor: admin, action: 'CAMPAIGN_REVIEWED', entityType: 'campaign', entityId: id, organizationId: campaign.organizationId, metadata: { decision, reason: campaign.reviewReason }, ip });
+    return { id, reviewStatus: campaign.reviewStatus, reviewReason: campaign.reviewReason };
   }
 
   async suspend(admin: RequestUser, id: string, reason: string, ip?: string) {

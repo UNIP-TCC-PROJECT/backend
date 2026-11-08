@@ -29,6 +29,7 @@ import { actorOf } from '../common/request-context';
 import { fileResponse } from '../common/file-upload';
 import { ReviewActionDto } from '../accountability/accountability.dto';
 import { MAX_ANEXO_BYTES } from './publicacoes.constants';
+import { ReviewContentDto } from '../common/review-content.dto';
 
 const upload = FileInterceptor('image', {
   storage: memoryStorage(),
@@ -71,7 +72,7 @@ export class PublicacoesController {
     return fileResponse(res, await this.publicacoesService.ownFile(req.user.id, id));
   }
 
-  // ----- Público (somente ONGs aprovadas; só anexos aprovados e publicáveis) -----
+  // ----- Público (ONG ativa com CNPJ conferido; conteúdo e anexos passam por suas filas) -----
   @Get('publicacoes')
   findAll(@Query(pipe) query: PublicacoesQueryDto) {
     return this.publicacoesService.findAll(query);
@@ -97,6 +98,18 @@ export class PublicacoesController {
   @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserType.ADMIN)
   pending() {
     return this.publicacoesService.listPendingFiles();
+  }
+
+  @Get('admin/publications/pending')
+  @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserType.ADMIN)
+  pendingPublications() {
+    return this.publicacoesService.listPendingPublications();
+  }
+
+  @Post('admin/publications/:id/review')
+  @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserType.ADMIN)
+  reviewPublication(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body(pipe) dto: ReviewContentDto) {
+    return this.publicacoesService.reviewPublication(actorOf(req), id, dto.decision, dto.reason, req.ip);
   }
 
   @Get('admin/publication-attachments/:id/file')

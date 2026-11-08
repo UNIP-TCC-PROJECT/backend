@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MetasController } from './metas.controller';
 import { MetasService } from './metas.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OngGuard } from '../auth/ong.guard';
+import { RolesGuard } from '../auth/roles.guard';
 
 describe('MetasController', () => {
   let controller: MetasController;
@@ -11,6 +14,8 @@ describe('MetasController', () => {
     create: jest.fn(),
     update: jest.fn(),
     deactivate: jest.fn(),
+    listPendingReview: jest.fn(),
+    review: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -22,7 +27,11 @@ describe('MetasController', () => {
           useValue: mockMetasService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(OngGuard).useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<MetasController>(MetasController);
   });

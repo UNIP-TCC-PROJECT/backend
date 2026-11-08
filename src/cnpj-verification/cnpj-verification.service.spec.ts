@@ -20,6 +20,20 @@ describe('CnpjVerificationService', () => {
     get().mockResolvedValue(r(200, ong));
     expect((await service.consultarCnpj('27.977.535/0001-73', 'ASSOCIACAO X')).verificacao).toMatchObject({ situacaoAtiva: true, naturezaCompativel: true, cnpjCompativel: true });
   });
+  it('não concede a verificação automática quando o nome informado não corresponde ao CNPJ', async () => {
+    get().mockResolvedValue(r(200, ong));
+    expect((await service.consultarCnpj(CNPJ, 'OUTRA ORGANIZACAO')).verificacao).toMatchObject({
+      nomeCompativel: false,
+      cnpjCompativel: false,
+    });
+  });
+  it('não concede a verificação automática sem comparar o nome informado', async () => {
+    get().mockResolvedValue(r(200, ong));
+    expect((await service.consultarCnpj(CNPJ)).verificacao).toMatchObject({
+      nomeCompativel: false,
+      cnpjCompativel: false,
+    });
+  });
   it('404 → "não encontrado"; 400 → "inválido" (ambos BadRequest, sem retentativa)', async () => {
     const m = get().mockResolvedValue(r(404, { error: 'not found' }));
     await expect(service.consultarCnpj(CNPJ)).rejects.toThrow(/não encontrado/);
