@@ -53,12 +53,12 @@ status!: UserStatus;
 
   /**
    * Resultado da verificação automática feita no cadastro com os dados públicos do CNPJ.
-   * É independente da validação institucional de documentos, usada no selo "Cadastro verificado".
+   * É independente da validação institucional de documentos, usada para conceder a Medalha Branca.
    */
   @Column({ name: 'medalhaVerde', default: false })
   preVerificacaoCnpj!: boolean;
 
-  /** Aprovação do antigo programa da Medalha Branca (histórico; o programa foi encerrado). */
+  /** Campo legado de aprovação das solicitações antigas; a Medalha Branca atual é calculada da validação institucional. */
   @Column({ name: 'medalhaBranca', default: false })
   medalhaBrancaLegada!: boolean;
 

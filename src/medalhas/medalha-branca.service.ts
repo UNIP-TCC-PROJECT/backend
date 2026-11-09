@@ -12,9 +12,8 @@ import {
 } from './entities/pedido-medalha-branca.entity';
 
 /**
- * Histórico do antigo programa da Medalha Branca (encerrado). Os pedidos, as análises e os documentos enviados
- * continuam consultáveis; não há mais envio nem análise de novos pedidos. A validação documental passou a ser
- * feita na validação institucional (documentos da instituição), que sustenta o "cadastro verificado".
+ * Histórico do antigo fluxo de solicitações da Medalha Branca. Os pedidos e documentos legados continuam consultáveis;
+ * a Medalha Branca atual é concedida pela validação institucional e não depende desses pedidos antigos.
  */
 @Injectable()
 export class MedalhaBrancaService {
