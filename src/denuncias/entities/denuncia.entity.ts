@@ -58,6 +58,15 @@ export class Denuncia {
   })
   status!: DenunciaStatus;
 
+  @Column({ type: 'text', nullable: true })
+  reviewNote!: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  reviewedBy!: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

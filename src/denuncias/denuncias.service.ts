@@ -6,11 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Denuncia, DenunciaStatus, DenunciaTipoAlvo } from './entities/denuncia.entity';
 import { CreateDenunciaDto } from './dto/create-denuncia.dto';
 import { User, UserStatus, UserType } from '../users/entities/user.entity';
 import { Reviews } from '../reviews/entities/reviews.entity';
+import { ReviewDenunciaDto } from './dto/review-denuncia.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class DenunciasService {
@@ -21,7 +23,78 @@ export class DenunciasService {
     private userRepository: Repository<User>,
     @InjectRepository(Reviews)
     private reviewsRepository: Repository<Reviews>,
+    private audit: AuditService,
+    private dataSource: DataSource,
   ) {}
+
+  async listForAdmin(status?: DenunciaStatus, includeClosed = false) {
+    const query = this.denunciasRepository
+      .createQueryBuilder('denuncia')
+      .leftJoinAndSelect('denuncia.autor', 'autor')
+      .select([
+        'denuncia.id',
+        'denuncia.autorId',
+        'denuncia.tipoAlvo',
+        'denuncia.alvoId',
+        'denuncia.motivo',
+        'denuncia.contexto',
+        'denuncia.status',
+        'denuncia.reviewNote',
+        'denuncia.reviewedBy',
+        'denuncia.reviewedAt',
+        'denuncia.createdAt',
+        'autor.id',
+        'autor.name',
+      ])
+      .orderBy('denuncia.createdAt', 'DESC')
+      .take(200);
+
+    if (status) query.where('denuncia.status = :status', { status });
+    else if (!includeClosed) query.where('denuncia.status IN (:...statuses)', {
+      statuses: [DenunciaStatus.PENDENTE, DenunciaStatus.EM_ANALISE],
+    });
+
+    return query.getMany();
+  }
+
+  async reviewByAdmin(adminId: number, id: number, dto: ReviewDenunciaDto, ip?: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(Denuncia);
+      const denuncia = await repository.findOne({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!denuncia) throw new NotFoundException('Denúncia não encontrada.');
+      if (![DenunciaStatus.PENDENTE, DenunciaStatus.EM_ANALISE].includes(denuncia.status)) {
+        throw new BadRequestException('Esta denúncia já foi concluída.');
+      }
+      if (dto.decision !== DenunciaStatus.EM_ANALISE && !dto.note?.trim()) {
+        throw new BadRequestException('Informe a justificativa para concluir a análise.');
+      }
+
+      denuncia.status = dto.decision;
+      denuncia.reviewNote = dto.note?.trim() || null;
+      denuncia.reviewedBy = adminId;
+      denuncia.reviewedAt = new Date();
+      await repository.save(denuncia);
+      await this.audit.log({
+        actor: { id: adminId, type: UserType.ADMIN },
+        action: 'REPORT_REVIEWED',
+        entityType: 'denuncia',
+        entityId: id,
+        metadata: { decision: denuncia.status, note: denuncia.reviewNote },
+        ip,
+      }, manager);
+
+      return {
+        id: denuncia.id,
+        status: denuncia.status,
+        reviewNote: denuncia.reviewNote,
+        reviewedBy: denuncia.reviewedBy,
+        reviewedAt: denuncia.reviewedAt,
+      };
+    });
+  }
 
   // Retorna apenas o necessário ao denunciante; nada de dados de terceiros.
   async create(autorId: number, dto: CreateDenunciaDto) {
