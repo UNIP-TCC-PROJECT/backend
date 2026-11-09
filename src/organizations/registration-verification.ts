@@ -1,5 +1,5 @@
 /**
- * Cadastro verificado (selo verde) — validação institucional da plataforma.
+ * Validação institucional que habilita a Medalha Branca.
  *
  * Função pura e independente do nível de transparência: responde apenas "esta instituição passou pela
  * validação institucional e continua atendendo aos requisitos?". É sempre calculada de registros reais

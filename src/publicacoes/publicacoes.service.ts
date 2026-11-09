@@ -101,26 +101,34 @@ export class PublicacoesService {
     const saved = await this.dataSource.transaction(async (m) => {
       const p = await m.save(Publicacao, m.create(Publicacao, { ongId: ong.id, organizationId: org?.id ?? null, description: dto.description, category: dto.category ?? 'ATUALIZACAO', imageUrl: null, reviewStatus: access.canPublishWithoutReview ? ContentReviewStatus.APROVADA : ContentReviewStatus.PENDENTE, reviewedBy: null, reviewedAt: access.canPublishWithoutReview ? new Date() : null, ...links }));
       await this.audit.log({ actor: { id: ong.id, type: UserType.ONG }, action: 'PUBLICATION_CREATED', entityType: 'publicacao', entityId: p.id, organizationId: org?.id ?? null, metadata: { category: p.category, reviewStatus: p.reviewStatus, ...links }, ip }, m);
-      if (file) await this.saveAnexo(m, p, file, ong.id, !!dto.imageConsent, ip);
+      if (file) await this.saveAnexo(m, p, file, ong.id, !!dto.imageConsent, ip, access.canPublishWithoutReview);
       return p;
     });
-    return { id: saved.id, category: saved.category, reviewStatus: saved.reviewStatus, createdAt: saved.createdAt, ...links, message: saved.reviewStatus === ContentReviewStatus.PENDENTE ? 'Publicação enviada para análise; ela ficará visível após aprovação.' : 'Publicação disponível.', attachmentNote: file ? 'A imagem aparece publicamente depois da análise do arquivo.' : null };
+    return { id: saved.id, category: saved.category, reviewStatus: saved.reviewStatus, createdAt: saved.createdAt, ...links, message: saved.reviewStatus === ContentReviewStatus.PENDENTE ? 'Publicação enviada para análise; texto e imagem ficarão visíveis após aprovação.' : 'Publicação disponível.', attachmentNote: file ? (saved.reviewStatus === ContentReviewStatus.APROVADA ? 'A imagem foi publicada junto com a publicação.' : 'A imagem será publicada junto com a publicação após a aprovação.') : null };
   }
 
-  private async saveAnexo(m: import('typeorm').EntityManager, p: Publicacao, f: ReturnType<typeof prepareAnexo>, userId: number, consent: boolean, ip?: string) {
-    const a = await m.save(PublicacaoAnexo, m.create(PublicacaoAnexo, { ...f, publicacaoId: p.id, organizationId: p.organizationId, uploadedBy: userId, imageConsent: f.kind === 'IMAGEM' ? consent : false, status: AccStatus.ENVIADA }));
+  private async saveAnexo(m: import('typeorm').EntityManager, p: Publicacao, f: ReturnType<typeof prepareAnexo>, userId: number, consent: boolean, ip?: string, publishImageImmediately = false) {
+    const autoPublishImage = f.kind === 'IMAGEM' && consent && publishImageImmediately;
+    const a = await m.save(PublicacaoAnexo, m.create(PublicacaoAnexo, { ...f, publicacaoId: p.id, organizationId: p.organizationId, uploadedBy: userId, imageConsent: f.kind === 'IMAGEM' ? consent : false, status: autoPublishImage ? AccStatus.APROVADA : AccStatus.ENVIADA, publishable: autoPublishImage, reviewedAt: autoPublishImage ? new Date() : null }));
     await this.audit.log({ actor: { id: userId, type: UserType.ONG }, action: 'PUBLICATION_ATTACHMENT_ADDED', entityType: 'publicacao_anexo', entityId: a.id, organizationId: p.organizationId, metadata: { publicacaoId: p.id, kind: f.kind, sha256: f.sha256, imageConsent: a.imageConsent }, ip }, m);
     return a;
   }
 
   async addAttachment(ongId: number, publicacaoId: number, file: Express.Multer.File | undefined, consent: boolean, ip?: string) {
     await this.activeOng(ongId);
+    const access = await this.organizations.contentAccess(ongId);
+    if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de anexar arquivos.');
     const p = await this.repo.findOneBy({ id: publicacaoId, ongId });
     if (!p) throw new NotFoundException(NOT_FOUND);
     if ((await this.anexos.countBy({ publicacaoId })) >= MAX_ANEXOS_POR_PUBLICACAO) throw new BadRequestException(`Limite de ${MAX_ANEXOS_POR_PUBLICACAO} anexos por publicação.`);
     const f = prepareAnexo(file);
     if (f.kind === 'IMAGEM' && !consent) throw new BadRequestException('Confirme a autorização de uso das imagens.');
-    const a = await this.dataSource.transaction((m) => this.saveAnexo(m, p, f, ongId, consent, ip));
+    const a = await this.dataSource.transaction(async (m) => {
+      if (f.kind === 'IMAGEM' && !access.canPublishWithoutReview && p.reviewStatus === ContentReviewStatus.APROVADA) {
+        await m.update(Publicacao, p.id, { reviewStatus: ContentReviewStatus.PENDENTE, reviewedBy: null, reviewedAt: null, reviewReason: null });
+      }
+      return this.saveAnexo(m, p, f, ongId, consent, ip, access.canPublishWithoutReview);
+    });
     return { id: a.id, kind: a.kind, status: a.status, sha256: a.sha256 };
   }
 
@@ -225,17 +233,28 @@ export class PublicacoesService {
   // ---------- Análise (admin) ----------
 
   listPendingFiles() {
-    return this.anexos.find({ select: FILE_META, where: { status: In([AccStatus.ENVIADA, AccStatus.EM_ANALISE]) }, order: { createdAt: 'ASC' }, take: 200 });
+    return this.anexos.find({ select: FILE_META, where: { status: In([AccStatus.ENVIADA, AccStatus.EM_ANALISE]) }, order: { createdAt: 'ASC' }, take: 200 })
+      .then((files) => files.filter((file) => file.kind !== 'IMAGEM'));
   }
 
-  listPendingPublications() {
-    return this.repo.find({
+  async listPendingPublications() {
+    const publications = await this.repo.find({
       where: { reviewStatus: ContentReviewStatus.PENDENTE },
       relations: { ong: true },
       select: { id: true, ongId: true, description: true, category: true, createdAt: true, reviewStatus: true, ong: { id: true, name: true } },
       order: { createdAt: 'ASC' },
       take: 200,
     });
+    if (!publications.length) return [];
+    const images = await this.anexos.find({
+      select: { id: true, publicacaoId: true, name: true, mime: true },
+      where: { publicacaoId: In(publications.map((p) => p.id)), kind: 'IMAGEM', imageConsent: true },
+      order: { createdAt: 'ASC' },
+    });
+    return publications.map((publication) => ({
+      ...publication,
+      images: images.filter((image) => image.publicacaoId === publication.id),
+    }));
   }
 
   async reviewPublication(admin: RequestUser, id: number, decision: ContentReviewDecision, reason?: string, ip?: string) {
@@ -247,8 +266,17 @@ export class PublicacoesService {
     publication.reviewReason = decision === 'REPROVAR' ? reason!.trim() : null;
     publication.reviewedBy = admin.id;
     publication.reviewedAt = new Date();
-    await this.repo.save(publication);
-    await this.audit.log({ actor: admin, action: 'PUBLICATION_REVIEWED', entityType: 'publicacao', entityId: String(id), organizationId: publication.organizationId, metadata: { decision, reason: publication.reviewReason }, ip });
+    await this.dataSource.transaction(async (m) => {
+      await m.save(publication);
+      await m.update(PublicacaoAnexo, { publicacaoId: id, kind: 'IMAGEM', imageConsent: true }, {
+        status: decision === 'APROVAR' ? AccStatus.APROVADA : AccStatus.REPROVADA,
+        publishable: decision === 'APROVAR',
+        reviewedBy: admin.id,
+        reviewedAt: new Date(),
+        reviewReason: publication.reviewReason,
+      });
+      await this.audit.log({ actor: admin, action: 'PUBLICATION_REVIEWED', entityType: 'publicacao', entityId: String(id), organizationId: publication.organizationId, metadata: { decision, reason: publication.reviewReason, imagesReviewedWithPublication: true }, ip }, m);
+    });
     return { id, reviewStatus: publication.reviewStatus, reviewReason: publication.reviewReason };
   }
 
@@ -261,11 +289,10 @@ export class PublicacoesService {
   async reviewFile(admin: RequestUser, id: string, dto: ReviewActionDto, ip?: string) {
     const a = await this.anexos.findOne({ where: { id }, select: FILE_META });
     if (!a) throw new NotFoundException('Arquivo não encontrado.');
+    if (a.kind === 'IMAGEM') throw new BadRequestException('Imagens de publicações são analisadas junto com o conteúdo da publicação.');
     if (needsReason(dto.action) && !dto.reason) throw new BadRequestException('Informe o motivo.');
     const status = nextStatus(a.status, dto.action);
-    // Imagem só pode ser publicada com a autorização de imagem declarada pela ONG.
-    const publishable = dto.action === 'APROVAR' && !!dto.publishable && (a.kind !== 'IMAGEM' || a.imageConsent);
-    if (dto.action === 'APROVAR' && dto.publishable && !publishable) throw new BadRequestException('A ONG não declarou autorização de uso da imagem: não é possível publicá-la.');
+    const publishable = dto.action === 'APROVAR' && !!dto.publishable;
     await this.dataSource.transaction(async (m) => {
       await m.update(PublicacaoAnexo, id, { status, reviewedBy: admin.id, reviewedAt: new Date(), reviewReason: dto.reason ?? null, publishable });
       await this.audit.log({ actor: admin, action: 'PUBLICATION_ATTACHMENT_REVIEWED', entityType: 'publicacao_anexo', entityId: id, organizationId: a.organizationId, metadata: { status, publishable, reason: dto.reason ?? null }, ip }, m);

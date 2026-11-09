@@ -129,7 +129,7 @@ export interface TimelineEvent {
  */
 export interface SelosOng {
   verificacaoCnpj: { verificado: boolean };
-  cadastroVerificado:
+  medalhaBranca:
     | { verificado: false }
     | {
         verificado: true;
@@ -849,7 +849,7 @@ export class TransparencyService {
           if (!org) {
             result[ownerId] = {
               verificacaoCnpj,
-              cadastroVerificado: { verificado: false },
+              medalhaBranca: { verificado: false },
               nivelTransparencia: null,
             };
             return;
@@ -893,13 +893,13 @@ export class TransparencyService {
               : null;
           result[ownerId] = {
             verificacaoCnpj,
-            cadastroVerificado: reg.verified
+            medalhaBranca: reg.verified && verificacaoCnpj.verificado
               ? {
                   verificado: true,
                   validadoEm: reg.validatedAt,
                   consultadoEm: reg.checkedAt,
                   comRessalvas: reg.withReservations,
-                  criterios: reg.criteria.map((c) => c.label),
+                  criterios: ['CNPJ conferido', ...reg.criteria.map((c) => c.label)],
                 }
               : { verificado: false },
             nivelTransparencia: nivel

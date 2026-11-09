@@ -19,7 +19,7 @@ import { UserStatus, UserType } from '../users/entities/user.entity';
 import { MedalhaBrancaService } from './medalha-branca.service';
 
 const PROGRAMA_ENCERRADO =
-  'O programa da Medalha Branca foi encerrado. A validação institucional agora é feita pelos documentos da instituição.';
+  'O antigo fluxo de solicitações foi encerrado. A Medalha Branca atual é concedida após a validação institucional dos documentos.';
 
 type AuthRequest = { user: { id: number; type: UserType; status: UserStatus } };
 

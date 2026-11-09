@@ -262,7 +262,7 @@ export class UsersService {
       throw new ForbiddenException('Você só pode editar o próprio perfil');
     }
 
-    // O CNPJ foi verificado no cadastro (e sustenta o cadastro verificado): trocá-lo exige nova validação pela administração.
+    // O CNPJ foi conferido no cadastro (critério da Medalha Branca): trocá-lo exige nova validação pela administração.
     if (
       data?.cnpj !== undefined &&
       String(data.cnpj).replace(/\D/g, '') !==
