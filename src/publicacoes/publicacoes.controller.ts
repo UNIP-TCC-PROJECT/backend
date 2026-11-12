@@ -2,6 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  HttpCode,
+  HttpStatus,
   Body,
   Param,
   ParseIntPipe,
@@ -57,6 +60,13 @@ export class PublicacoesController {
   @UseGuards(JwtAuthGuard, OngGuard)
   mine(@Req() req: any) {
     return this.publicacoesService.mine(req.user.id);
+  }
+
+  @Delete('publicacoes/:id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.publicacoesService.remove(actorOf(req), id, req.ip);
   }
 
   @Post('publicacoes/:id/anexos')
