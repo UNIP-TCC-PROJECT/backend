@@ -32,7 +32,7 @@ export class ConversasService {
   ) {}
 
   async iniciarPorDoador(doadorId: number, ongId: number) {
-    await this.validarUsuarioAtivo(doadorId, UserType.DOADOR);
+    await this.validarUsuarioAtivo(doadorId, UserType.DOADOR, true);
     await this.validarUsuarioAtivo(ongId, UserType.ONG);
     return this.obterOuCriarConversa(doadorId, ongId);
   }
@@ -108,7 +108,7 @@ export class ConversasService {
     usuario: UsuarioAutenticado,
     textoRecebido: string,
   ) {
-    const conversa = await this.buscarConversaDoParticipante(conversaId, usuario);
+    const conversa = await this.buscarConversaDoParticipante(conversaId, usuario, true);
     const texto = textoRecebido.trim();
 
     if (!texto) {
@@ -153,8 +153,9 @@ export class ConversasService {
   private async buscarConversaDoParticipante(
     conversaId: number,
     usuario: UsuarioAutenticado,
+    forWrite = false,
   ) {
-    await this.validarParticipanteAtivo(usuario);
+    await this.validarParticipanteAtivo(usuario, forWrite);
 
     const where =
       usuario.type === UserType.DOADOR
@@ -170,7 +171,7 @@ export class ConversasService {
     return conversa;
   }
 
-  private async validarParticipanteAtivo(usuario: UsuarioAutenticado) {
+  private async validarParticipanteAtivo(usuario: UsuarioAutenticado, forWrite = false) {
     if (
       usuario.type !== UserType.DOADOR &&
       usuario.type !== UserType.ONG
@@ -178,17 +179,19 @@ export class ConversasService {
       throw new ForbiddenException('Acesso permitido somente a doadores e ONGs.');
     }
 
-    await this.validarUsuarioAtivo(usuario.id, usuario.type);
+    await this.validarUsuarioAtivo(usuario.id, usuario.type, forWrite);
   }
 
-  private async validarUsuarioAtivo(id: number, type: UserType) {
+  private async validarUsuarioAtivo(id: number, type: UserType, forWrite = false) {
     const usuario = await this.usersRepository.findOne({
       where: { id, type, status: UserStatus.ATIVO },
-      select: { id: true },
+      select: { id: true, contentRestricted: true },
     });
 
     if (!usuario) {
       throw new ForbiddenException('Ação permitida somente a contas ativas.');
     }
+    if (forWrite && type === UserType.DOADOR && usuario.contentRestricted)
+      throw new ForbiddenException('Sua conta está restrita e não pode iniciar ou enviar mensagens em conversas.');
   }
 }

@@ -51,7 +51,7 @@ export class InteressesService {
   }
 
   async demonstrar(doadorId: number, ongId: number) {
-    await this.validarDoadorAtivo(doadorId);
+    await this.validarDoadorAtivo(doadorId, true);
     await this.validarOngAtiva(ongId);
 
     const existente = await this.interessesRepository.findOne({
@@ -73,19 +73,21 @@ export class InteressesService {
     return { interessado: false };
   }
 
-  private async validarDoadorAtivo(doadorId: number) {
+  private async validarDoadorAtivo(doadorId: number, verificarRestricao = false) {
     const doador = await this.usersRepository.findOne({
       where: {
         id: doadorId,
         type: UserType.DOADOR,
         status: UserStatus.ATIVO,
       },
-      select: { id: true },
+      select: { id: true, contentRestricted: true },
     });
 
     if (!doador) {
       throw new ForbiddenException('Ação permitida somente para doadores ativos.');
     }
+    if (verificarRestricao && doador.contentRestricted)
+      throw new ForbiddenException('Sua conta está restrita e não pode demonstrar interesse.');
   }
 
   private async validarOngAtiva(ongId: number) {

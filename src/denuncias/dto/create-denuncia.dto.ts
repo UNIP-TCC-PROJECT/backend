@@ -4,7 +4,7 @@ import { DenunciaTipoAlvo } from '../entities/denuncia.entity';
 
 export class CreateDenunciaDto {
   @IsEnum(DenunciaTipoAlvo, {
-    message: 'O tipo do alvo deve ser ONG ou COMENTARIO.',
+    message: 'O tipo do alvo deve ser ONG, DOADOR ou COMENTARIO.',
   })
   tipoAlvo!: DenunciaTipoAlvo;
 

@@ -17,7 +17,7 @@ import { isValidCpf, onlyDigits } from '../organizations/cnpj.util';
 import { OrganizationStatus } from '../organizations/entities/organization.entity';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { AsaasPayment, AsaasService } from '../payments/asaas.service';
-import { User } from '../users/entities/user.entity';
+import { User, UserStatus } from '../users/entities/user.entity';
 import { Donation, DonationStatus } from './entities/donation.entity';
 
 const PAID = ['RECEIVED', 'CONFIRMED'];
@@ -78,6 +78,10 @@ export class DonationsService {
     idempotencyKey: string | undefined,
     ip?: string,
   ) {
+    const user = await this.users.findOneByOrFail({ id: donor.id });
+    if (user.contentRestricted)
+      throw new ForbiddenException('Sua conta está restrita e não pode criar doações.');
+
     if (idempotencyKey) {
       const existing = await this.repo.findOneBy({
         donorId: donor.id,
@@ -87,7 +91,7 @@ export class DonationsService {
     }
     const now = new Date();
     const c = await this.campaigns.findOne({
-      where: { id: campaignId },
+      where: { id: campaignId, organization: { owner: { status: UserStatus.ATIVO } } },
       relations: { organization: true },
     });
     const open =
@@ -101,7 +105,6 @@ export class DonationsService {
         'Campanha não encontrada ou indisponível para doações.',
       );
 
-    const user = await this.users.findOneByOrFail({ id: donor.id });
     const cpf = onlyDigits(user.cpf) || onlyDigits(dto.cpf);
     if (!isValidCpf(cpf))
       throw new BadRequestException('Informe um CPF válido para emitir o Pix.');
