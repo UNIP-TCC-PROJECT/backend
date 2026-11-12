@@ -25,6 +25,27 @@ export class AuditImmutabilityAndRoles1793364490084 implements MigrationInterfac
   }
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Bancos existentes anteriores à Baseline podem ainda não ter essa tabela.
+    // A criação condicional preserva qualquer trilha já existente.
+    await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS "audit_logs" (
+        "id" BIGSERIAL NOT NULL,
+        "actorId" integer,
+        "actorType" character varying,
+        "action" character varying NOT NULL,
+        "entityType" character varying NOT NULL,
+        "entityId" character varying,
+        "organizationId" character varying,
+        "metadata" jsonb,
+        "ip" character varying,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+        "prevHash" character varying(64),
+        "hash" character varying(64),
+        CONSTRAINT "PK_1bb179d048bbc581caa3b013439" PRIMARY KEY ("id")
+      )`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_9885c0f9a2e4081ebae4313d87" ON "audit_logs" ("organizationId", "createdAt")`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_13c69424c440a0e765053feb4b" ON "audit_logs" ("entityType", "entityId")`);
+
     await queryRunner.query(`
       CREATE OR REPLACE FUNCTION audit_logs_imutavel() RETURNS trigger AS $$
       BEGIN RAISE EXCEPTION 'audit_logs é imutável'; END; $$ LANGUAGE plpgsql`);

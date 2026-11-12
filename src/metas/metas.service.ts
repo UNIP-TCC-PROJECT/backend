@@ -81,7 +81,7 @@ export class MetasService {
   }
 
   async create(ongId: number, data: CreateMetaDto) {
-    const access = await this.organizations.contentAccess(ongId);
+    const access = await this.organizations.contentAccess(ongId, true);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de cadastrar metas.');
 
     const meta = this.metaRepo.create({
@@ -109,7 +109,7 @@ export class MetasService {
   }
 
   async update(id: number, ongId: number, data: UpdateMetaDto) {
-    const access = await this.organizations.contentAccess(ongId);
+    const access = await this.organizations.contentAccess(ongId, true);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de editar metas.');
     const meta = await this.findOwnedMeta(id, ongId);
 

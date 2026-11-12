@@ -10,6 +10,8 @@ import { PublicacaoAnexo } from '../publicacoes/entities/publicacao-anexo.entity
 import { Interesse } from '../interesses/entities/interesse.entity';
 import { Conversa } from '../conversas/entities/conversa.entity';
 import { Mensagem } from '../conversas/entities/mensagem.entity';
+import { ConversaSac } from '../sac/entities/conversa-sac.entity';
+import { MensagemSac } from '../sac/entities/mensagem-sac.entity';
 import { PasswordResetToken } from '../password-reset/entities/password-reset-token.entity';
 import { AuditLog } from '../audit/audit-log.entity';
 import { Session } from '../auth/entities/session.entity';
@@ -37,6 +39,8 @@ export const ENTITIES = [
   Interesse,
   Conversa,
   Mensagem,
+  ConversaSac,
+  MensagemSac,
   PedidoMedalhaBranca,
   DocumentoMedalhaBranca,
   PasswordResetToken,
