@@ -160,15 +160,13 @@ export class OrganizationsService implements OnModuleInit {
    * para análise; a publicação sem fila requer também a aprovação institucional vigente
    * e os documentos obrigatórios aprovados (Medalha Branca).
    */
-  async contentAccess(userId: number, forWrite = false) {
+  async contentAccess(userId: number) {
     const user = await this.users.findOne({
       where: { id: userId, type: UserType.ONG },
-      select: { id: true, status: true, preVerificacaoCnpj: true, contentRestricted: true },
+      select: { id: true, status: true, preVerificacaoCnpj: true },
     });
     if (!user || user.status !== 'ATIVO')
       throw new ForbiddenException('Apenas ONGs ativas podem cadastrar conteúdo.');
-    if (forWrite && user.contentRestricted)
-      throw new ForbiddenException('A administração restringiu as alterações de conteúdo desta ONG.');
 
     const org = await this.ofOwner(userId);
     const currentDocuments = await this.docs.find({
@@ -191,9 +189,8 @@ export class OrganizationsService implements OnModuleInit {
 
     return {
       level: medalhaBranca ? 'MEDALHA_BRANCA' : cnpjVerified ? 'CNPJ_CONFERIDO' : 'SEM_VERIFICACAO',
-      canSubmit: cnpjVerified && !user.contentRestricted,
-      canPublishWithoutReview: medalhaBranca && !user.contentRestricted,
-      restricted: user.contentRestricted,
+      canSubmit: cnpjVerified,
+      canPublishWithoutReview: medalhaBranca,
       organizationId: org.id,
     } as const;
   }
@@ -726,43 +723,5 @@ export class OrganizationsService implements OnModuleInit {
       );
     });
     return this.orgs.findOneByOrFail({ id });
-  }
-
-  /** Reativa a instituição e registra a justificativa no histórico administrativo. */
-  async reactivate(admin: RequestUser, id: string, reason: string, ip?: string) {
-    return this.dataSource.transaction(async (manager) => {
-      const org = await manager.findOne(Organization, {
-        where: { id },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!org) throw new NotFoundException('Organização não encontrada.');
-      if (org.status !== OrganizationStatus.SUSPENSA) {
-        throw new BadRequestException('A organização não está suspensa.');
-      }
-
-      await manager.update(Organization, id, {
-        status: OrganizationStatus.APROVADA,
-        statusReason: null,
-        reviewedBy: admin.id,
-        reviewedAt: new Date(),
-      });
-      await manager.insert(OrganizationValidation, {
-        organizationId: id,
-        decision: 'REATIVAR',
-        reason,
-        reviewedBy: admin.id,
-      });
-      await this.audit.log({
-        actor: admin,
-        action: 'ORG_REACTIVATED',
-        entityType: 'organization',
-        entityId: id,
-        organizationId: id,
-        metadata: { previousStatus: OrganizationStatus.SUSPENSA, newStatus: OrganizationStatus.APROVADA, reason },
-        ip,
-      }, manager);
-
-      return manager.findOneByOrFail(Organization, { id });
-    });
   }
 }

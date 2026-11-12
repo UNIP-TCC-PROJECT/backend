@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Denuncia, DenunciaStatus, DenunciaTipoAlvo } from './entities/denuncia.entity';
 import { CreateDenunciaDto } from './dto/create-denuncia.dto';
 import { User, UserStatus, UserType } from '../users/entities/user.entity';
@@ -27,7 +27,7 @@ export class DenunciasService {
     private dataSource: DataSource,
   ) {}
 
-  async listForAdmin(status?: DenunciaStatus, includeClosed = false, ongId?: number) {
+  async listForAdmin(status?: DenunciaStatus, includeClosed = false) {
     const query = this.denunciasRepository
       .createQueryBuilder('denuncia')
       .leftJoinAndSelect('denuncia.autor', 'autor')
@@ -45,7 +45,6 @@ export class DenunciasService {
         'denuncia.createdAt',
         'autor.id',
         'autor.name',
-        'autor.type',
       ])
       .orderBy('denuncia.createdAt', 'DESC')
       .take(200);
@@ -54,17 +53,6 @@ export class DenunciasService {
     else if (!includeClosed) query.where('denuncia.status IN (:...statuses)', {
       statuses: [DenunciaStatus.PENDENTE, DenunciaStatus.EM_ANALISE],
     });
-    if (ongId !== undefined) {
-      query.andWhere(new Brackets((related) => {
-        related.where('denuncia.tipoAlvo = :ong AND denuncia.alvoId = :ongId', {
-          ong: DenunciaTipoAlvo.ONG,
-          ongId,
-        }).orWhere("denuncia.tipoAlvo = :comentario AND denuncia.contexto ->> 'ongId' = :contextOngId", {
-          comentario: DenunciaTipoAlvo.COMENTARIO,
-          contextOngId: String(ongId),
-        });
-      }));
-    }
 
     return query.getMany();
   }
@@ -116,15 +104,8 @@ export class DenunciasService {
       throw new NotFoundException('Usuário não encontrado.');
     }
 
-    const expectedAuthorType = dto.tipoAlvo === DenunciaTipoAlvo.DOADOR
-      ? UserType.ONG
-      : UserType.DOADOR;
-    if (autor.type !== expectedAuthorType) {
-      throw new ForbiddenException(
-        dto.tipoAlvo === DenunciaTipoAlvo.DOADOR
-          ? 'Somente ONGs podem denunciar doadores.'
-          : 'Somente doadores podem denunciar ONGs ou comentários.',
-      );
+    if (autor.type !== UserType.DOADOR) {
+      throw new ForbiddenException('Somente doadores podem enviar denúncias.');
     }
 
     if (autor.status !== UserStatus.ATIVO) {
@@ -196,22 +177,6 @@ export class DenunciasService {
         cnpj: ong.cnpj ?? null,
         descricao: ong.description ?? null,
         statusConta: ong.status,
-      };
-    }
-
-    if (dto.tipoAlvo === DenunciaTipoAlvo.DOADOR) {
-      const doador = await this.userRepository.findOne({
-        where: { id: dto.alvoId, type: UserType.DOADOR },
-      });
-
-      if (!doador) {
-        throw new NotFoundException('Doador não encontrado.');
-      }
-
-      return {
-        doadorId: doador.id,
-        nome: doador.name,
-        statusConta: doador.status,
       };
     }
 

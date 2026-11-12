@@ -31,7 +31,7 @@ export class CampaignsService {
   }
 
   async create(user: RequestUser, dto: CreateCampaignDto, ip?: string) {
-    const access = await this.orgs.contentAccess(user.id, true);
+    const access = await this.orgs.contentAccess(user.id);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de cadastrar campanhas.');
     const org = await this.orgs.ofOwner(user.id);
     this.assertDates(dto.startsAt, dto.endsAt);
@@ -41,7 +41,7 @@ export class CampaignsService {
   }
 
   async update(user: RequestUser, id: string, dto: UpdateCampaignDto, ip?: string) {
-    const access = await this.orgs.contentAccess(user.id, true);
+    const access = await this.orgs.contentAccess(user.id);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de editar campanhas.');
     const c = await this.ownedBy(user.id, id);
     if ([CampaignStatus.ENCERRADA, CampaignStatus.SUSPENSA].includes(c.status)) {
@@ -63,7 +63,7 @@ export class CampaignsService {
   }
 
   async setStatus(user: RequestUser, id: string, dto: CampaignStatusDto, ip?: string) {
-    const access = await this.orgs.contentAccess(user.id, true);
+    const access = await this.orgs.contentAccess(user.id);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de alterar campanhas.');
     const c = await this.ownedBy(user.id, id);
     if (dto.status === 'ATIVA' && c.reviewStatus !== ContentReviewStatus.APROVADA)
@@ -86,7 +86,7 @@ export class CampaignsService {
 
   /** Grava a imagem de apresentação (JPG/PNG, validada pelos bytes) na pasta pública de uploads. */
   async setImage(user: RequestUser, id: string, file: Express.Multer.File | undefined, ip?: string) {
-    const access = await this.orgs.contentAccess(user.id, true);
+    const access = await this.orgs.contentAccess(user.id);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de alterar campanhas.');
     const c = await this.ownedBy(user.id, id);
     const kind = detectImage(file?.buffer);

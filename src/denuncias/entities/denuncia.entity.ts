@@ -11,7 +11,6 @@ import { User } from '../../users/entities/user.entity';
 
 export enum DenunciaTipoAlvo {
   ONG = 'ONG',
-  DOADOR = 'DOADOR',
   COMENTARIO = 'COMENTARIO',
 }
 

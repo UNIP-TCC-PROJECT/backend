@@ -150,15 +150,6 @@ export class AdminOrganizationsController {
     return this.svc.suspend(actorOf(req), id, dto.reason, req.ip);
   }
 
-  @Post(':id/reactivate')
-  reactivate(
-    @Req() req: any,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: ReasonDto,
-  ) {
-    return this.svc.reactivate(actorOf(req), id, dto.reason, req.ip);
-  }
-
   @Post(':id/request-documents')
   requestDocuments(
     @Req() req: any,

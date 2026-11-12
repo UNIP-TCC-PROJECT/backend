@@ -36,14 +36,10 @@ export class AdminDenunciasController {
   constructor(private readonly denunciasService: DenunciasService) {}
 
   @Get()
-  list(
-    @Query('status') status?: DenunciaStatus,
-    @Query('all') all?: string,
-    @Query('ongId', new ParseIntPipe({ optional: true })) ongId?: number,
-  ) {
+  list(@Query('status') status?: DenunciaStatus, @Query('all') all?: string) {
     const validStatus =
       status && Object.values(DenunciaStatus).includes(status) ? status : undefined;
-    return this.denunciasService.listForAdmin(validStatus, all === 'true', ongId);
+    return this.denunciasService.listForAdmin(validStatus, all === 'true');
   }
 
   @Post(':id/decision')

@@ -23,7 +23,6 @@ import { PublicacoesModule } from './publicacoes/publicacoes.module';
 import { InteressesModule } from './interesses/interesses.module';
 
 import { ConversasModule } from './conversas/conversas.module';
-import { SacModule } from './sac/sac.module';
 
 import { AdminModule } from './admin/admin.module';
 
@@ -59,7 +58,6 @@ import { dbOptions } from './database/database.config';
     PublicacoesModule,
     InteressesModule,
     ConversasModule,
-    SacModule,
     PasswordResetModule,
     AuditModule,
     OrganizationsModule,

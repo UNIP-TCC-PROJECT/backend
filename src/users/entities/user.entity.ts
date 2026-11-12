@@ -33,9 +33,6 @@ export class User {
 })
 status!: UserStatus;
 
-  @Column({ default: false })
-  contentRestricted!: boolean;
-
   @Column({ unique: true })
   email!: string;
 

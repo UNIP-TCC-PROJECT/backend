@@ -88,7 +88,7 @@ export class PublicacoesService {
 
   async create(ongId: number, dto: CreatePublicacaoDto, image?: Express.Multer.File, ip?: string) {
     const ong = await this.activeOng(ongId);
-    const access = await this.organizations.contentAccess(ongId, true);
+    const access = await this.organizations.contentAccess(ongId);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de enviar publicações.');
     const org = await this.orgs.findOneBy({ ownerId: ong.id });
     const links = await this.resolveLinks(org, dto);
@@ -116,7 +116,7 @@ export class PublicacoesService {
 
   async addAttachment(ongId: number, publicacaoId: number, file: Express.Multer.File | undefined, consent: boolean, ip?: string) {
     await this.activeOng(ongId);
-    const access = await this.organizations.contentAccess(ongId, true);
+    const access = await this.organizations.contentAccess(ongId);
     if (!access.canSubmit) throw new ForbiddenException('Confira o CNPJ da organização antes de anexar arquivos.');
     const p = await this.repo.findOneBy({ id: publicacaoId, ongId });
     if (!p) throw new NotFoundException(NOT_FOUND);
