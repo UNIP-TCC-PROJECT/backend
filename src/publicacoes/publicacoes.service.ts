@@ -60,7 +60,7 @@ export class PublicacoesService {
     private readonly organizations: OrganizationsService,
   ) {}
 
-  // ---------- Criação (ONG) ----------
+  // ---------- Criação e Exclusão (ONG / Admin) ----------
 
   private async activeOng(ongId: number) {
     const ong = await this.usersRepository.findOne({ where: { id: ongId, type: UserType.ONG, status: UserStatus.ATIVO }, select: ['id', 'name'] });
@@ -105,6 +105,43 @@ export class PublicacoesService {
       return p;
     });
     return { id: saved.id, category: saved.category, reviewStatus: saved.reviewStatus, createdAt: saved.createdAt, ...links, message: saved.reviewStatus === ContentReviewStatus.PENDENTE ? 'Publicação enviada para análise; texto e imagem ficarão visíveis após aprovação.' : 'Publicação disponível.', attachmentNote: file ? (saved.reviewStatus === ContentReviewStatus.APROVADA ? 'A imagem foi publicada junto com a publicação.' : 'A imagem será publicada junto com a publicação após a aprovação.') : null };
+  }
+
+  async remove(actor: RequestUser, id: number, ip?: string): Promise<void> {
+    const p = await this.repo.findOneBy({ id });
+    if (!p) throw new NotFoundException(NOT_FOUND);
+
+    const isOwner = actor.type === UserType.ONG && Number(p.ongId) === Number(actor.id);
+    const isAdmin = actor.type === UserType.ADMIN;
+
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException('Sem permissão para remover esta publicação.');
+    }
+
+    if (isOwner) {
+      await this.activeOng(actor.id);
+    }
+
+    await this.dataSource.transaction(async (m) => {
+      await m.delete(PublicacaoAnexo, { publicacaoId: p.id });
+      await m.delete(Publicacao, { id: p.id });
+      await this.audit.log(
+        {
+          actor,
+          action: 'PUBLICATION_DELETED',
+          entityType: 'publicacao',
+          entityId: String(p.id),
+          organizationId: p.organizationId,
+          metadata: {
+            ongId: p.ongId,
+            category: p.category,
+            reviewStatus: p.reviewStatus,
+          },
+          ip,
+        },
+        m,
+      );
+    });
   }
 
   private async saveAnexo(m: import('typeorm').EntityManager, p: Publicacao, f: ReturnType<typeof prepareAnexo>, userId: number, consent: boolean, ip?: string, publishImageImmediately = false) {
@@ -170,14 +207,12 @@ export class PublicacoesService {
       return {
         id: p.id, ongId: p.ongId, organizationId: p.organizationId, description: p.description, createdAt: p.createdAt, ong: p.ong,
         category: p.category, categoryLabel: CATEGORY_LABEL[p.category as Category] ?? p.category,
-        // Compatível com o front antigo: imagem legada (disco) ou a primeira imagem aprovada.
         imageUrl: p.imageUrl ?? images[0]?.url ?? null,
         images,
         documents: shown.filter((f) => f.kind === 'DOCUMENTO').map((f) => ({ id: f.id, url: url(f), mime: f.mime, sha256: f.sha256 })),
         evidenceStatus: { published: shown.length, awaitingAnalysis: mine.filter((f) => f.status === AccStatus.ENVIADA || f.status === AccStatus.EM_ANALISE).length },
         classification,
         campaign: p.campaignId ? { id: p.campaignId, title: title.get(p.campaignId) ?? null } : null,
-        // Só expõe o vínculo quando há registro público por trás (despesa aprovada / entrega com evidência aprovada).
         accountability: { available: !!linkedProof || !!p.campaignId, expenseId: p.expenseId && expenseOk.has(p.expenseId) ? p.expenseId : null, deliveryRecordId: p.deliveryRecordId && deliveryOk.has(p.deliveryRecordId) ? p.deliveryRecordId : null },
       };
     });
