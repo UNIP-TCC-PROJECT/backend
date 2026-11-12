@@ -91,6 +91,9 @@ export class ReviewsService {
       if (doador.status !== UserStatus.ATIVO) {
         throw new ForbiddenException('Este doador não está ativo.');
       }
+      if (doador.contentRestricted) {
+        throw new ForbiddenException('Sua conta está restrita e não pode avaliar ONGs.');
+      }
 
       const existingReview = await reviewsRepository.findOne({
         where: { ong: { id: ongId }, doador: { id: doadorId } },

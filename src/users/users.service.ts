@@ -126,9 +126,12 @@ export class UsersService {
     return users.map(sanitizeUser);
   }
 
-  async findAllOngs() {
+  async findAllOngs(includeBlocked = false) {
     return this.repo.find({
-      where: { type: UserType.ONG },
+      where: {
+        type: UserType.ONG,
+        ...(includeBlocked ? {} : { status: UserStatus.ATIVO }),
+      },
       select: [
         'id',
         'name',
@@ -153,11 +156,12 @@ export class UsersService {
     });
   }
 
-  async findOngById(id: number) {
+  async findOngById(id: number, includeBlocked = false) {
     const ong = await this.repo.findOne({
       where: {
         id,
         type: UserType.ONG,
+        ...(includeBlocked ? {} : { status: UserStatus.ATIVO }),
       },
       select: [
         'id',
@@ -179,6 +183,7 @@ export class UsersService {
         'averageRating',
         'totalReviews',
         'status',
+        ...(includeBlocked ? ['contentRestricted' as const] : []),
       ],
     });
 
@@ -187,6 +192,36 @@ export class UsersService {
     }
 
     return ong;
+  }
+
+  async findAllDonors(includeBlocked = false) {
+    return this.repo.find({
+      where: {
+        type: UserType.DOADOR,
+        ...(includeBlocked ? {} : { status: UserStatus.ATIVO }),
+      },
+      select: [
+        'id', 'name', 'email', 'cpf', 'phone', 'city', 'state',
+        'createdAt', 'status', ...(includeBlocked ? ['contentRestricted' as const] : []),
+      ],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findDonorById(id: number, includeBlocked = false) {
+    const donor = await this.repo.findOne({
+      where: {
+        id,
+        type: UserType.DOADOR,
+        ...(includeBlocked ? {} : { status: UserStatus.ATIVO }),
+      },
+      select: [
+        'id', 'name', 'email', 'cpf', 'phone', 'description', 'city', 'state',
+        'createdAt', 'status', ...(includeBlocked ? ['contentRestricted' as const] : []),
+      ],
+    });
+    if (!donor) throw new NotFoundException('Doador não encontrado');
+    return donor;
   }
 
   async updateProfile(id: number, data: UpdateProfileDto) {
